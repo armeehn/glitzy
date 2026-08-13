@@ -6,6 +6,13 @@ hold a socket open, and so the studio can show progress and offer a cancel.
 Concurrency is deliberately small. The host is RAM-oversubscribed and this
 container has 2 GB; two evaluations holding 48-frame RGBA stacks each is
 already most of it, so more workers would trade throughput for the OOM killer.
+
+That trade was being lost at two. A warp over a full-size clip peaks near
+900 MB, so a pair of them overruns MemoryMax=1400M and the OOM killer takes
+the engine down -- which is not a slow render, it is a 502 for everyone with
+the studio open, and a variants sweep queues exactly the burst that triggers
+it. One render at a time is what the memory budget in clip.MAX_PIXELS is
+sized against; raising this means lowering that.
 """
 
 import threading
@@ -13,7 +20,7 @@ import time
 import traceback
 import uuid
 
-MAX_WORKERS = 2
+MAX_WORKERS = 1
 KEEP = 200
 
 _jobs = {}
@@ -125,7 +132,7 @@ def _worker():
             job.note = ""
             idx = getattr(e, "index", None)
             if idx is not None:
-                job.result = {"node": idx}
+                job.result = {"node": idx, "layer": getattr(e, "layer", None)}
             traceback.print_exc()
         finally:
             job.finished = time.time()

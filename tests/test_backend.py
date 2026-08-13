@@ -25,7 +25,7 @@ os.environ.setdefault("GLITCHSHEET_RACK", os.path.join(os.path.dirname(HERE), "r
 
 import numpy as np  # noqa: E402
 
-from glitchd import exporters, graph, nputil, ops, store  # noqa: E402
+from glitchd import exporters, graph, layers, nputil, ops, store  # noqa: E402
 from glitchd.clip import Clip, ClipTooBig  # noqa: E402
 from glitchd.graph import ChainError  # noqa: E402
 
@@ -324,6 +324,152 @@ try:
           mc.frames[0, 0, 0, 3])
 except Exception as e:
     check("codec ops run", False, repr(e))
+
+
+# ---------------------------------------------------------------------------
+section("layers")
+# ---------------------------------------------------------------------------
+BASE_L = {"name": "base", "chain": [
+    {"op": "source.truchet", "params": dict(SMALL, seed=3, scale=6)}]}
+TOP_L = {"name": "top", "blend": "multiply", "chain": [
+    {"op": "source.flow", "params": dict(SMALL, seed=9)}]}
+
+lp, _ = ops.coerce_specs(layers.LAYER_PARAMS, {"opacity": 400, "blend": "nope"})
+check("layer settings clamp", lp["opacity"] == 100 and lp["blend"] == "normal", lp)
+check("layer schema is exposed", len(layers.public_schema()["blends"]) >= 12)
+
+one = graph.evaluate_stack([BASE_L], 0)
+plain_chain = graph.evaluate(BASE_L["chain"])
+check("a single ordinary layer is not composited at all",
+      one["composite"] is False and one["hash"] == plain_chain["hash"])
+
+two = graph.evaluate_stack([BASE_L, TOP_L], 1)
+check("two layers composite", two["composite"] and store.cached(two["hash"]))
+check("both layers are reported", len(two["layers"]) == 2, two["layers"])
+comp = Clip.load(store.cache_path(two["hash"]))
+lo = Clip.load(store.cache_path(two["layers"][0]["hash"]))
+hi = Clip.load(store.cache_path(two["layers"][1]["hash"]))
+check("multiply really multiplies",
+      np.allclose(comp.frames[..., :3].astype(float),
+                  np.round(lo.frames[..., :3].astype(float)
+                           * hi.frames[..., :3].astype(float) / 255.0), atol=1.5))
+check("the canvas is the bottom layer's size",
+      (comp.w, comp.h) == (lo.w, lo.h), (comp.w, comp.h))
+
+again = graph.evaluate_stack([BASE_L, TOP_L], 1)
+check("a composite is cached like anything else", again["hash"] == two["hash"])
+reblend = graph.evaluate_stack([BASE_L, dict(TOP_L, blend="screen")], 1)
+check("changing a blend gives a different composite", reblend["hash"] != two["hash"])
+check("changing a blend re-runs no ops at all",
+      all(s["cached"] for s in reblend["steps"]), reblend["steps"])
+
+# Opacity 0 on the top layer must leave the bottom one untouched -- the check
+# that catches a compositing formula that lerps instead of alpha-compositing.
+faded = graph.evaluate_stack([BASE_L, dict(TOP_L, opacity=0)], 0)
+fc = Clip.load(store.cache_path(faded["hash"]))
+check("a zero-opacity layer changes nothing",
+      np.array_equal(fc.frames, lo.frames))
+
+# Transparency, which is where a compositor that lerps instead of
+# alpha-compositing gives itself away -- and only on the cut line, after the
+# sticker has been printed. Over a transparent backdrop, Multiply has nothing
+# to multiply by and must come out as the source colour, NOT as black
+# (multiplying by an assumed-zero backdrop) and not as a half-faded version.
+SHAPED = {"name": "shape", "chain": [
+    {"op": "source.truchet", "params": dict(SMALL, seed=3, scale=6)},
+    {"op": "matte.shape", "params": {"shape": "circle"}}]}
+holed = graph.evaluate_stack([SHAPED, dict(TOP_L, blend="multiply")], 0)
+hc = Clip.load(store.cache_path(holed["hash"]))
+check("blending over nothing keeps the source colour, not black",
+      np.array_equal(hc.frames[0, 0, 0, :3], hi.frames[0, 0, 0, :3]),
+      (hc.frames[0, 0, 0], hi.frames[0, 0, 0]))
+# ... and where both layers are empty the result must stay empty, or the
+# die-cut contour is taken from a rectangle of invisible pixels.
+both = graph.evaluate_stack([SHAPED, dict(SHAPED, name="two", blend="multiply")], 0)
+bc = Clip.load(store.cache_path(both["hash"]))
+check("two transparent layers stay transparent", bc.frames[0, 0, 0, 3] == 0,
+      bc.frames[0, 0, 0])
+
+clipped = graph.evaluate_stack([
+    {"name": "shape", "chain": [
+        {"op": "source.truchet", "params": dict(SMALL, seed=3, scale=6)},
+        {"op": "matte.shape", "params": {"shape": "circle"}}]},
+    {"name": "tex", "clip": True, "chain": [
+        {"op": "source.flow", "params": dict(SMALL, seed=5)}]}], 0)
+cl = Clip.load(store.cache_path(clipped["hash"]))
+check("clip-to-below keeps the corner empty", cl.frames[0, 0, 0, 3] == 0)
+check("clip-to-below keeps the middle opaque",
+      cl.frames[0, SMALL["height"] // 2, SMALL["width"] // 2, 3] > 200)
+
+erased = graph.evaluate_stack([BASE_L, {"name": "punch", "blend": "erase",
+                                        "scale": 50, "chain": TOP_L["chain"]}], 0)
+er = Clip.load(store.cache_path(erased["hash"]))
+check("erase punches a hole in the layers below", er.frames[..., 3].min() == 0)
+check("erase leaves the outside alone", er.frames[0, 0, 0, 3] == 255)
+
+hidden = graph.evaluate_stack([BASE_L, dict(TOP_L, off=True)], 0)
+check("a hidden layer is skipped", hidden["hash"] == one["hash"])
+soloed = graph.evaluate_stack([BASE_L, dict(TOP_L, solo=True)], 0)
+check("solo renders only the soloed layer",
+      Clip.load(store.cache_path(soloed["hash"])).frames.shape == hi.frames.shape
+      and np.array_equal(Clip.load(store.cache_path(soloed["hash"])).frames,
+                         hi.frames))
+view = graph.evaluate_stack([BASE_L, TOP_L], 1, view="layer")
+check("view=layer skips the composite entirely",
+      view["hash"] == two["layers"][1]["hash"] and view["composite"] is False)
+
+# A half-built layer is normal in a studio and must not blank the artwork.
+half = graph.evaluate_stack([BASE_L, {"name": "new", "chain": []}], 1)
+check("an empty layer is skipped, not an error", half["hash"] == one["hash"])
+broken = {"name": "broken", "chain": [{"op": "pixel.levels", "params": {}}]}
+try:
+    graph.evaluate_stack([BASE_L, broken], 1)
+    check("a broken layer names itself", False, "no error raised")
+except ChainError as e:
+    check("a broken layer names itself", e.layer == 1 and e.index == 0, (e.layer, e.index))
+check("a broken layer that is switched off does not block the render",
+      graph.evaluate_stack([BASE_L, dict(broken, off=True)], 0)["hash"] == one["hash"])
+try:
+    graph.evaluate_stack([{"name": "a", "chain": []}], 0)
+    check("a project with no chains at all is an error", False)
+except ChainError as e:
+    check("a project with no chains at all is an error", e.layer == -1)
+try:
+    graph.evaluate_stack([dict(BASE_L)] * (layers.MAX_LAYERS + 1), 0)
+    check("too many layers is refused", False)
+except ChainError:
+    check("too many layers is refused", True)
+
+# Placement: sizes and frame counts are allowed to disagree.
+WIDE = {"name": "wide", "blend": "screen", "chain": [
+    {"op": "source.flow", "params": dict(SMALL, width=64, height=32, frames=2)}]}
+mixed = graph.evaluate_stack([BASE_L, WIDE], 0)
+mm = store.cache_meta(mixed["hash"])
+check("the canvas ignores the upper layers' sizes",
+      (mm["w"], mm["h"]) == (SMALL["width"], SMALL["height"]), mm)
+check("the stack runs as long as its longest layer", mm["n"] == SMALL["frames"], mm)
+offset = graph.evaluate_stack([BASE_L, dict(WIDE, x=100, y=100)], 0)
+check("a layer pushed right off the canvas composites to nothing",
+      offset["hash"] != mixed["hash"]
+      and np.array_equal(Clip.load(store.cache_path(offset["hash"])).frames,
+                         lo.frames))
+noted = graph.evaluate_stack([dict(BASE_L, blend="erase"), TOP_L], 0)
+check("a matte blend on the bottom layer explains itself",
+      any("renders empty" in n for n in noted["notes"]), noted["notes"])
+
+for blend, _label in layers.BLENDS:
+    try:
+        r = graph.evaluate_stack([BASE_L, dict(TOP_L, blend=blend)], 0)
+        ok = store.cached(r["hash"])
+    except Exception as e:
+        ok = repr(e)
+    check("blend %s composites" % blend, ok is True, ok)
+
+doc = store.save_project(None, {"name": "stacked", "layers": [BASE_L, TOP_L]})
+listed = [p for p in store.list_projects() if p["id"] == doc["id"]][0]
+check("a stacked project counts every layer's nodes",
+      listed["nodes"] == 2 and listed["layers"] == 2, listed)
+store.delete_project(doc["id"])
 
 
 # ---------------------------------------------------------------------------

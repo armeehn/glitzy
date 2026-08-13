@@ -269,9 +269,13 @@ def list_projects(limit=100):
             continue
         doc = load_project(f[:-5])
         if doc:
+            stack = doc.get("layers")
+            if not isinstance(stack, list) or not stack:
+                stack = [{"chain": doc.get("chain") or []}]
             out.append({"id": doc.get("id"), "name": doc.get("name") or "untitled",
                         "saved": doc.get("saved", 0),
-                        "nodes": len(doc.get("chain") or [])})
+                        "layers": len(stack),
+                        "nodes": sum(len(ly.get("chain") or []) for ly in stack)})
     out.sort(key=lambda d: d["saved"], reverse=True)
     return out[:limit]
 

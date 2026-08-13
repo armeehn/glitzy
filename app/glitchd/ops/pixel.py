@@ -146,8 +146,8 @@ def displace(clip, p, ctx):
         xs = xs + mx * amt
     if p["vertical"]:
         ys = ys + my * amt
-    out = nputil.sample_bilinear(clip.frames.astype(np.float32), xs, ys, wrap=True)
-    return clip.like(np.clip(out, 0, 255).astype(np.uint8))
+    out = nputil.sample_bilinear(clip.frames, xs, ys, wrap=True)
+    return clip.like(np.clip(out, 0, 255, out=out).astype(np.uint8))
 
 
 @op(id="pixel.slices", label="Slice shuffle", cat="pixel",

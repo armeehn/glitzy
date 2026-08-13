@@ -27,6 +27,50 @@ includes the upstream hash, it identifies the whole chain *prefix*, so:
 That cache is the difference between a studio and a cook button, and it is the reason
 the compute lives on the backend rather than in the browser.
 
+## Layers
+
+A project is a **stack** of those chains, composited bottom to top. Each layer holds one
+chain plus how it meets the layers under it: blend mode, opacity, fit, scale, offset,
+clip-to-below, and how a short layer fills a long one's timeline.
+
+```
+ top    Layer 2   source.rings → matte.shape            multiply · 60%
+        Layer 1   source.media → codec.smear            screen
+ base   Base      source.flow → colour.palette → matte  normal
+```
+
+Nothing about the chain model changed. A layer's chain is evaluated by the same
+evaluator and lands on the same cache; the stack is a second, much smaller graph on top.
+The composite is itself a cached node, keyed on every layer's output hash plus its
+placement:
+
+- changing a blend mode or opacity re-runs **one composite and no ops at all**
+- a layer you are not editing is a cache hit, so the cost of a stack is the layer you
+  are working in
+- a single ordinary layer is not composited at all — it hands back its chain's own cache
+  entry, so a one-layer project is byte for byte what it was before layers existed
+
+Rules worth knowing:
+
+- **The canvas is the bottom visible layer's own size.** Adding a decorative layer can
+  never resize the artwork you have already been printing. Upper layers are placed on it
+  by their `fit`, and the stack runs as long as its longest layer.
+- **Compositing is the W3C model, not a lerp.** A Multiply layer over a transparent
+  region comes out as the source colour, not black — the alternative is a bug that only
+  shows up in the die-cut contour, after the sticker is printed.
+- **Erase and Keep inside** ignore their own colour and use their alpha as a stencil on
+  everything below. **Clip to below** does the opposite: it restricts a layer to where
+  the stack is already opaque — a texture poured into a silhouette.
+- **Solo** shows the active layer alone. What is on screen is what Keep and the exports
+  use, so a soloed view keeps that single layer, not the stack.
+- A layer with an empty chain is skipped rather than an error, and a hidden layer is
+  never validated — a half-built or broken layer you have switched off cannot block the
+  render of the ones you can see.
+
+The layer settings are declared with the same schema helpers as op parameters and are
+served from `/api/ops` alongside them, so **adding a blend mode is a backend-only
+change** too.
+
 ## Op families
 
 | Category | What it does |
@@ -49,7 +93,8 @@ never learns its name.
 app/glitchd/          the engine (Python 3 stdlib + numpy + Pillow)
   clip.py             the Clip type; frames on disk as PNGs
   store.py            content-addressed cache, sources, projects
-  graph.py            chain evaluation and cache reuse
+  graph.py            chain and stack evaluation, cache reuse
+  layers.py           blend modes, placement, the composite itself
   jobs.py             worker queue with progress and cancel
   ff.py               ffgac/ffedit bridge: encode → glitch → decode
   nputil.py           sampling, blur, bounded distance transform, noise
@@ -59,7 +104,7 @@ app/glitchd/          the engine (Python 3 stdlib + numpy + Pillow)
   ops/                the op library, one module per family
 app/rack/             ffedit qjs scripts (one per codec op)
 app/web/              the studio — native ES modules, no build step
-tests/                test_backend.py (109 checks), uitest.mjs (36 checks)
+tests/                test_backend.py (157 checks), uitest.mjs (87 checks)
 ```
 
 ## Running the tests

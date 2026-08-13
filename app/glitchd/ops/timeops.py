@@ -35,7 +35,10 @@ def drift(clip, p, ctx):
     px = px + np.sin(t * np.pi * 2) * room_x * 0.25 * sway
     py = py + np.cos(t * np.pi * 2 * 1.3) * room_y * 0.25 * sway
     xs, ys = nputil.grid(n, h, w)
-    src = clip.frames.astype(np.float32)
+    # Stay uint8 through the frame pick: this is the op that turns one still
+    # into n frames, so a float32 copy here is the single biggest allocation
+    # in the engine. sample_bilinear upcasts per block instead.
+    src = clip.frames
     if clip.n < n:
         idx = (np.arange(n) * clip.n // n) % clip.n
         src = src[idx]
@@ -44,7 +47,7 @@ def drift(clip, p, ctx):
     sx = np.clip(xs / z + px, 0, w - 1)
     sy = np.clip(ys / z + py, 0, h - 1)
     out = nputil.sample_bilinear(src, sx, sy, wrap=False)
-    return clip.like(np.clip(out, 0, 255).astype(np.uint8))
+    return clip.like(np.clip(out, 0, 255, out=out).astype(np.uint8))
 
 
 @op(id="time.length", label="Length", cat="time",

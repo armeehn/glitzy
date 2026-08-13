@@ -79,25 +79,45 @@
           <div class="spacer"></div>
           <label class="inline"><input type="checkbox" id="fastpreview" checked>
             <span>Fast preview</span></label>
+          <label class="inline" title="Look at the active layer on its own. What you
+see is what Keep and the exports use, so a solo view keeps a single layer.">
+            <input type="checkbox" id="solo"><span>Solo layer</span></label>
           <button class="btn sm" id="renderall">Render to end</button>
           <button class="btn sm primary" id="keep" disabled>Keep</button>
         </div>
       </div>
 
       <div class="chainwrap">
-        <div class="chainhead">
-          <span class="ph">Chain</span>
-          <span class="stat" id="s-chainnote"></span>
-          <div class="spacer"></div>
-          <button class="btn sm" id="clearchain">Clear</button>
+        <div class="stackcol">
+          <div class="chainhead">
+            <span class="ph">Layers <span class="chip dim" id="s-stack">1</span></span>
+            <div class="spacer"></div>
+            <button class="btn sm" id="addlayer"
+                    title="Add an empty layer on top of the stack">+ Layer</button>
+          </div>
+          <div class="stack" id="stack"></div>
         </div>
-        <div class="chain" id="chain"></div>
+        <div class="chaincol">
+          <div class="chainhead">
+            <span class="ph">Chain</span>
+            <span class="stat" id="s-chainnote"></span>
+            <div class="spacer"></div>
+            <button class="btn sm" id="clearchain">Clear</button>
+          </div>
+          <div class="chain" id="chain"></div>
+        </div>
       </div>
     </section>
 
     <aside class="rail right" id="rail-right">
       <section class="panel" id="inspector-panel">
         <h2 class="ph">Inspector <span class="chip dim" id="s-node">nothing selected</span></h2>
+        <!-- The layer's compositing controls get their own host rather than
+             living inside #inspector: everything that reads the inspector
+             (and every test) means "the controls for the selected node" by
+             it, and folding a second set of controls into the same box
+             quietly changes what "the first control" refers to. -->
+        <div class="pbody" id="layerbox"></div>
         <div class="pbody" id="inspector"></div>
       </section>
 

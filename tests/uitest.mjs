@@ -164,6 +164,131 @@ try {
     sheet.cut && sheet.cut.mode === 'contour' && sheet.cut.offset === 0,
     JSON.stringify(sheet.cut));
 
+  // ------------------------------------------------------------- layers ---
+  // The stack is a second graph on top of the chain, and the trap it brings is
+  // that `S.proj.chain` is now an accessor onto whichever layer is active. If
+  // that binding is wrong the studio looks fine and edits the wrong layer, so
+  // every check here is about which chain the UI is actually pointing at.
+  check('the stack starts with one layer',
+    (await page.locator('#stack .lyr').count()) === 1,
+    await page.locator('#stack .lyr').count());
+  const baseNodes = await page.locator('#chain .node').count();
+
+  await page.locator('#addlayer').click();
+  await page.waitForFunction(() => window.__gs.proj.layers.length === 2,
+    null, { timeout: 5000 });
+  check('adding a layer adds a row',
+    (await page.locator('#stack .lyr').count()) === 2);
+  check('a new layer becomes the active one',
+    await page.evaluate(() => window.__gs.active) === 1);
+  check('a new layer starts with an empty chain',
+    (await page.locator('#chain .node').count()) === 0,
+    await page.locator('#chain .node').count());
+  check('the top of the stack is drawn first',
+    +await page.locator('#stack .lyr').first().getAttribute('data-i') === 1);
+
+  // Fill it with one cheap source rather than a starter: this test already
+  // waits on real ffglitch renders and a second codec chain doubles the run.
+  await page.fill('#opsearch', 'truchet');
+  await page.waitForTimeout(200);
+  await page.locator('#library button').first().click();
+  await page.waitForFunction(
+    () => window.__gs.proj.layers[1].chain.length === 1, null, { timeout: 5000 });
+  // Put the library back: the filter persists, and a later section that looks
+  // for an op by name fails 30s later somewhere else entirely.
+  await page.fill('#opsearch', '');
+  check('an op lands in the ACTIVE layer, not the first one',
+    await page.evaluate(() => window.__gs.proj.layers[0].chain.length) === baseNodes,
+    await page.evaluate(() => window.__gs.proj.layers.map((l) => l.chain.length).join('/')));
+
+  await page.waitForFunction(() => window.__gs.composite === true,
+    null, { timeout: 240000 });
+  check('two layers render as a composite', true);
+  check('the composite is not any single layer\'s output', await page.evaluate(
+    () => !Object.values(window.__gs.layerOut).includes(window.__gs.shownHash)));
+  check('the artwork says it is a composite',
+    (await page.locator('#osd .chip').first().textContent()).includes('composite'),
+    await page.locator('#osd .chip').first().textContent());
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('#stack img.lt')]
+      .every((i) => i.complete && i.naturalWidth > 0)
+      && document.querySelectorAll('#stack img.lt').length === 2,
+    null, { timeout: 60000 }).catch(() => {});
+  check('each layer gets its own thumbnail',
+    (await page.locator('#stack img.lt').count()) === 2,
+    await page.locator('#stack img.lt').count());
+
+  // The compositing controls are generated from /api/ops, like everything else.
+  const lbox = page.locator('#layerbox .lbox');
+  check('the layer box is in the inspector', (await lbox.count()) === 1);
+  check('the layer box is closed by default',
+    !(await lbox.evaluate((d) => d.open)));
+  await lbox.locator('summary').click();
+  check('the layer box carries every setting the engine declares',
+    await lbox.locator('label').count() >= await page.evaluate(
+      () => window.__gs.layerSpec.params.length),
+    await lbox.locator('label').count());
+
+  const preBlend = await page.locator('#view').getAttribute('src');
+  await lbox.locator('select').first().selectOption('difference');
+  await page.waitForFunction((b) => document.querySelector('#view').getAttribute('src') !== b,
+    preBlend, { timeout: 240000 });
+  check('changing a blend re-renders the artwork', true);
+  check('the stack row shows the blend',
+    (await page.locator('#stack .lyr').first().textContent()).toLowerCase()
+      .includes('difference'),
+    await page.locator('#stack .lyr').first().textContent());
+
+  // Selecting a layer must swap the chain strip under it.
+  await page.locator('#stack .lyr').last().click();
+  await page.waitForFunction((n) => document.querySelectorAll('#chain .node').length === n,
+    baseNodes, { timeout: 10000 });
+  check('selecting a layer swaps the chain strip to that layer',
+    (await page.locator('#chain .node').count()) === baseNodes);
+  check('the selected layer is the one marked',
+    +await page.locator('#stack .lyr[data-sel=true]').getAttribute('data-i') === 0);
+
+  const preHide = await page.locator('#view').getAttribute('src');
+  await page.locator('#stack .lyr').first().locator('.leye').click();
+  await page.waitForFunction((b) => document.querySelector('#view').getAttribute('src') !== b,
+    preHide, { timeout: 240000 });
+  check('hiding a layer changes the artwork', true);
+  check('a hidden layer is dimmed',
+    await page.locator('#stack .lyr').first().getAttribute('data-off') === 'true');
+  await page.locator('#stack .lyr').first().locator('.leye').click();
+  await page.waitForTimeout(1500);
+
+  // Solo: what you see is what Keep and the exports use, so this changes the
+  // rendered result, not just the view.
+  await page.locator('#solo').check();
+  await page.waitForFunction(() => window.__gs.composite === false,
+    null, { timeout: 240000 });
+  check('solo shows the active layer on its own',
+    await page.evaluate(() => window.__gs.shownHash
+      === window.__gs.layerOut[window.__gs.proj.layers[window.__gs.active].id]));
+  await page.locator('#solo').uncheck();
+  await page.waitForFunction(() => window.__gs.composite === true,
+    null, { timeout: 240000 });
+  check('unsoloing goes back to the composite', true);
+
+  const stackH = await page.locator('#stack').evaluate((e) => e.getBoundingClientRect().height);
+  check('the layer stack has a fixed height', Math.abs(stackH - 104) < 2, stackH);
+  const rowOverlap = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#stack .lyr')];
+    let bad = 0;
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i].getBoundingClientRect().top
+          < rows[i - 1].getBoundingClientRect().bottom - 1) bad++;
+    }
+    return bad;
+  });
+  check('layer rows do not overlap each other', rowOverlap === 0, rowOverlap);
+  const stackClip = await page.evaluate(() => {
+    const s = document.querySelector('#stack');
+    return s.scrollWidth - s.clientWidth;
+  });
+  check('the stack does not clip its rows sideways', stackClip <= 1, stackClip);
+
   // ------------------------------------------------------------- layout ---
   // v1's "items move everywhere" report was flex panels overlapping. Measure
   // it rather than trusting a screenshot: small text in a narrow rail vanishes

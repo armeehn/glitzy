@@ -201,10 +201,51 @@ input[type=file]{display:none}
 .zlvl{font-size:.62rem;color:var(--fg-dim);min-width:4.2ch;text-align:center;
   font-variant-numeric:tabular-nums}
 
-/* ---------------------------------------------------------------- chain -- */
+/* ------------------------------------------------------- layers + chain -- */
+/* The stack sits beside the chain, not in the right rail: the rail already
+   runs past the bottom of a 768px window with the inspector and variants
+   open, and a layer only makes sense next to the chain it owns. Both columns
+   scroll inside a FIXED row height for the same reason the chain always
+   had one -- adding a layer must never resize the centre column and shove
+   the artwork sideways. */
 .chainwrap{border-top:1px solid var(--rule);background:var(--surface);
-  padding:.4rem .6rem .5rem}
+  padding:.4rem .6rem .5rem;display:grid;grid-template-columns:214px minmax(0,1fr);
+  gap:.7rem;align-items:start}
+.stackcol,.chaincol{min-width:0}
 .chainhead{display:flex;align-items:center;gap:.5rem}
+
+.stack{height:104px;overflow-y:auto;overflow-x:hidden;margin-top:.4rem;
+  display:flex;flex-direction:column;gap:.2rem;padding-right:.15rem}
+.lyr{display:flex;align-items:center;gap:.35rem;padding:.18rem .2rem;
+  border:1px solid var(--rule);background:var(--bg);cursor:pointer;
+  /* Rows must not shrink: a flex column of them squashes each below its own
+     content height and the names overlap the row beneath. */
+  flex:0 0 auto;min-width:0}
+.lyr[data-sel=true]{border-color:var(--pink);box-shadow:0 0 0 1px var(--pink)}
+.lyr[data-off=true]{opacity:.42}
+.lyr .lt,.lyr .lph{width:30px;height:30px;flex:0 0 auto;object-fit:cover;
+  background:var(--checker);display:block}
+.lyr .lph{display:grid;place-items:center;font-size:.55rem;color:var(--fg-dim)}
+.lyr .lmeta{display:flex;flex-direction:column;min-width:0;flex:1;line-height:1.25}
+.lyr .lmeta b{font-size:.6rem;font-weight:700;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis}
+.lyr .lmeta i{font-style:normal;font-size:.52rem;color:var(--fg-dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lyr .leye,.lyr .lsolo,.lyr .lx{background:none;border:0;color:var(--fg-dim);
+  font-size:.6rem;line-height:1;padding:.1rem .16rem;flex:0 0 auto}
+.lyr .lsolo{border:1px solid var(--rule);font-weight:700;font-size:.52rem}
+.lyr .lsolo[data-on=true]{color:var(--orange);border-color:var(--orange)}
+.lyr .leye:hover,.lyr .lx:hover{color:var(--pink)}
+
+/* The layer's compositing controls, folded away by default so they cost one
+   row of the right rail rather than nine. */
+.lbox{border:1px solid var(--rule);background:var(--bg);padding:.3rem .4rem}
+.lbox>summary{cursor:pointer;display:flex;align-items:center;gap:.4rem;
+  font-size:.6rem;letter-spacing:.06em;text-transform:uppercase;font-weight:700}
+.lbox>summary::marker{color:var(--fg-dim)}
+.lbox>summary b{font-weight:700}
+.lbox>summary i{font-style:normal;color:var(--fg-dim)}
+.lbox>*+*{margin-top:.4rem}
 /* Fixed height: adding a node must never resize the centre column and shove
    the artwork around. */
 .chain{display:flex;gap:.3rem;align-items:stretch;height:104px;overflow-x:auto;
@@ -284,10 +325,19 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
   body[data-pane=right] .rail.left{display:none}
   .only-narrow{display:inline-flex}
 }
+@media (max-width:1100px){
+  .chainwrap{grid-template-columns:180px minmax(0,1fr);gap:.5rem}
+}
 @media (max-width:640px){
   .top{gap:.35rem .5rem}
   .projname{width:9ch}
   .stat{display:none}
   .chain{height:92px}
+  /* Still two columns, never stacked: stacking them would make the centre
+     column taller and eat the artwork. */
+  .chainwrap{grid-template-columns:126px minmax(0,1fr)}
+  .stack{height:92px}
+  .lyr .lt,.lyr .lph{width:22px;height:22px}
+  .lyr .lsolo{display:none}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}

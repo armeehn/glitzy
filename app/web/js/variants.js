@@ -88,8 +88,12 @@ async function sweep() {
 
   try {
     setBusy(true, 'sweeping', 0);
+    // The sweep goes through the whole stack: a variant of one layer, shown
+    // as the finished artwork. Sweeping a layer in isolation would grade
+    // twelve thumbnails that look nothing like what comes off the cutter.
     const { job } = await jpost('/api/variants', {
-      chain: S.proj.chain, index: S.sel, param, values,
+      layers: S.proj.layers.map(({ id, ...l }) => l), active: S.active,
+      index: S.sel, param, values,
     });
     running = job;
     const done = await pollJob(job, (j) =>

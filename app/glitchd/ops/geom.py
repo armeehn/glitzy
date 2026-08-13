@@ -57,11 +57,11 @@ def transform(clip, p, ctx):
     sx = dx * ca + dy * sa + cx
     sy = -dx * sa + dy * ca + cy
     wrap = p["edge"] == "wrap"
-    out = nputil.sample_bilinear(clip.frames.astype(np.float32), sx, sy, wrap=wrap)
+    out = nputil.sample_bilinear(clip.frames, sx, sy, wrap=wrap)
     if p["edge"] == "empty":
         off = (sx < 0) | (sx > w - 1) | (sy < 0) | (sy > h - 1)
         out[off] = 0
-    return clip.like(np.clip(out, 0, 255).astype(np.uint8))
+    return clip.like(np.clip(out, 0, 255, out=out).astype(np.uint8))
 
 
 @op(id="geom.mirror", label="Mirror", cat="geom",
@@ -85,10 +85,10 @@ def mirror(clip, p, ctx):
         a = np.arctan2(dy, dx)
         seg = np.pi * 2 / max(3, int(p["segments"]))
         a = np.abs(((a % seg) + seg) % seg - seg / 2)
-        out = nputil.sample_bilinear(f.astype(np.float32),
+        out = nputil.sample_bilinear(f,
                                      cx + np.cos(a) * r, cy + np.sin(a) * r,
                                      wrap=False)
-        return clip.like(np.clip(out, 0, 255).astype(np.uint8))
+        return clip.like(np.clip(out, 0, 255, out=out).astype(np.uint8))
     out = f.copy()
     if mode in ("x", "quad"):
         half = w // 2
@@ -152,8 +152,8 @@ def wave(clip, p, ctx):
         xs = xs + np.sin(ys / h * np.pi * 2 * fq + t) * a
     if p["axis"] in ("y", "both"):
         ys = ys + np.sin(xs / w * np.pi * 2 * fq + t) * a
-    out = nputil.sample_bilinear(clip.frames.astype(np.float32), xs, ys, wrap=True)
-    return clip.like(np.clip(out, 0, 255).astype(np.uint8))
+    out = nputil.sample_bilinear(clip.frames, xs, ys, wrap=True)
+    return clip.like(np.clip(out, 0, 255, out=out).astype(np.uint8))
 
 
 @op(id="geom.polar", label="Polar", cat="geom",
@@ -176,5 +176,5 @@ def polar(clip, p, ctx):
         a = xs / max(w - 1, 1) * np.pi * 2 - rot
         r = ys / max(h - 1, 1) * min(cx, cy)
         sx, sy = cx + np.cos(a) * r, cy + np.sin(a) * r
-    out = nputil.sample_bilinear(clip.frames.astype(np.float32), sx, sy, wrap=True)
-    return clip.like(np.clip(out, 0, 255).astype(np.uint8))
+    out = nputil.sample_bilinear(clip.frames, sx, sy, wrap=True)
+    return clip.like(np.clip(out, 0, 255, out=out).astype(np.uint8))

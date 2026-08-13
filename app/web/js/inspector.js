@@ -8,12 +8,23 @@
 import { $, el, fmt, on, toast } from './dom.js';
 import { jget, jpost, upload } from './api.js';
 import { S, fire, selNode, setParam } from './state.js';
+import { layerBox } from './layers.js';
 
 export function renderInspector() {
   const host = $('#inspector');
   const badge = $('#s-node');
   if (!host) return;
   host.textContent = '';
+
+  // The active layer's compositing settings sit above the node's, in their own
+  // host: the stack rows are only wide enough for a name and a blend, and this
+  // is where the schema-driven controls already live.
+  const lhost = $('#layerbox');
+  if (lhost) {
+    lhost.textContent = '';
+    const lb = layerBox(control);
+    if (lb) lhost.append(lb);
+  }
 
   const n = selNode();
   if (!n) {
@@ -32,8 +43,9 @@ export function renderInspector() {
   badge.textContent = spec.cat;
   host.append(el('p', { class: 'blurb' }, spec.blurb));
 
+  const set = (k, v) => setParam(S.sel, k, v);
   for (const p of spec.params) {
-    host.append(control(S.sel, p, n.params[p.k]));
+    host.append(control(p, n.params[p.k], set));
   }
 
   for (const note of S.notes.filter(Boolean)) {
@@ -41,15 +53,18 @@ export function renderInspector() {
   }
 }
 
-function control(i, p, value) {
+/** One control per parameter TYPE. `set(key, value)` is what it writes
+ *  through -- a node param or a layer's compositing setting; the control
+ *  itself does not know which, which is what lets layers reuse all of it. */
+export function control(p, value, set) {
   switch (p.type) {
-    case 'bool': return boolCtl(i, p, value);
-    case 'enum': return enumCtl(i, p, value);
-    case 'colour': return colourCtl(i, p, value);
-    case 'source': return sourceCtl(i, p, value);
-    case 'text': return textCtl(i, p, value);
-    case 'seed': return seedCtl(i, p, value);
-    default: return numCtl(i, p, value);
+    case 'bool': return boolCtl(p, value, set);
+    case 'enum': return enumCtl(p, value, set);
+    case 'colour': return colourCtl(p, value, set);
+    case 'source': return sourceCtl(p, value, set);
+    case 'text': return textCtl(p, value, set);
+    case 'seed': return seedCtl(p, value, set);
+    default: return numCtl(p, value, set);
   }
 }
 
@@ -57,7 +72,7 @@ function label(p, valueNode) {
   return el('span', {}, p.label, valueNode || '');
 }
 
-function numCtl(i, p, value) {
+function numCtl(p, value, set) {
   const out = el('b', {}, fmt(value) + (p.suffix || ''));
   const range = el('input', {
     type: 'range', min: p.min, max: p.max, step: p.step || 1, value,
@@ -66,20 +81,20 @@ function numCtl(i, p, value) {
   // fires once on release and asks for the full-quality render.
   on(range, 'input', () => {
     out.textContent = fmt(range.value) + (p.suffix || '');
-    setParam(i, p.k, +range.value);
+    set(p.k, +range.value);
   });
   on(range, 'change', () => fire('commit'));
   return el('label', { class: 'f', title: p.hint || '' }, label(p, out), range);
 }
 
-function seedCtl(i, p, value) {
+function seedCtl(p, value, set) {
   const out = el('b', {}, String(value));
   const range = el('input', {
     type: 'range', min: p.min, max: p.max, step: 1, value,
   });
   on(range, 'input', () => {
     out.textContent = range.value;
-    setParam(i, p.k, +range.value);
+    set(p.k, +range.value);
   });
   on(range, 'change', () => fire('commit'));
   const dice = el('button', {
@@ -88,7 +103,7 @@ function seedCtl(i, p, value) {
       const v = 1 + Math.floor(Math.random() * (p.max - 1));
       range.value = v;
       out.textContent = String(v);
-      setParam(i, p.k, v);
+      set(p.k, v);
       fire('commit');
     },
   }, 'roll');
@@ -96,34 +111,34 @@ function seedCtl(i, p, value) {
     el('span', {}, p.label, el('span', { class: 'row' }, out, dice)), range);
 }
 
-function boolCtl(i, p, value) {
+function boolCtl(p, value, set) {
   const box = el('input', { type: 'checkbox' });
   box.checked = !!value;
-  on(box, 'change', () => { setParam(i, p.k, box.checked); fire('commit'); });
+  on(box, 'change', () => { set(p.k, box.checked); fire('commit'); });
   return el('label', { class: 'inline', title: p.hint || '' }, box,
     el('span', {}, p.label));
 }
 
-function enumCtl(i, p, value) {
+function enumCtl(p, value, set) {
   const sel = el('select', {});
   for (const o of p.options) {
     const opt = el('option', { value: o.v }, o.label);
     if (o.v === value) opt.selected = true;
     sel.append(opt);
   }
-  on(sel, 'change', () => { setParam(i, p.k, sel.value); fire('commit'); });
+  on(sel, 'change', () => { set(p.k, sel.value); fire('commit'); });
   return el('label', { class: 'f', title: p.hint || '' }, label(p), sel);
 }
 
-function colourCtl(i, p, value) {
+function colourCtl(p, value, set) {
   const inp = el('input', { type: 'color', value: /^#/.test(value) ? value : '#000000' });
-  on(inp, 'change', () => { setParam(i, p.k, inp.value); fire('commit'); });
+  on(inp, 'change', () => { set(p.k, inp.value); fire('commit'); });
   return el('label', { class: 'f', title: p.hint || '' }, label(p), inp);
 }
 
-function textCtl(i, p, value) {
+function textCtl(p, value, set) {
   const inp = el('input', { type: 'text', value: value || '', placeholder: p.placeholder || '' });
-  on(inp, 'change', () => { setParam(i, p.k, inp.value); fire('commit'); });
+  on(inp, 'change', () => { set(p.k, inp.value); fire('commit'); });
   return el('label', { class: 'f', title: p.hint || '' }, label(p), inp);
 }
 
@@ -131,7 +146,7 @@ function textCtl(i, p, value) {
 /* Source picker                                                             */
 /* ------------------------------------------------------------------------ */
 
-function sourceCtl(i, p, value) {
+function sourceCtl(p, value, set) {
   const wrap = el('div', { class: 'pbody', style: 'margin-top:0' });
   const sel = el('select', {});
   const refresh = () => {
@@ -146,7 +161,7 @@ function sourceCtl(i, p, value) {
     }
   };
   refresh();
-  on(sel, 'change', () => { setParam(i, p.k, sel.value); fire('commit'); });
+  on(sel, 'change', () => { set(p.k, sel.value); fire('commit'); });
 
   const file = el('input', { type: 'file', accept: 'image/*,video/*' });
   on(file, 'change', async () => {
@@ -158,7 +173,7 @@ function sourceCtl(i, p, value) {
       await reloadSources();
       refresh();
       sel.value = meta.id;
-      setParam(i, p.k, meta.id);
+      set(p.k, meta.id);
       fire('commit');
       toast(`${meta.name} — ${meta.width}×${meta.height}` +
         (meta.kind === 'video' ? `, ${fmt(meta.duration, 1)}s` : ''));
@@ -178,7 +193,7 @@ function sourceCtl(i, p, value) {
         await reloadSources();
         refresh();
         sel.value = meta.id;
-        setParam(i, p.k, meta.id);
+        set(p.k, meta.id);
         fire('commit');
         toast(`${meta.name} — ${meta.width}×${meta.height}`);
       } catch (e) {

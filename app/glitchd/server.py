@@ -22,14 +22,14 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import exporters, ff, graph, jobs, ops, store
+from . import exporters, ff, graph, jobs, layers as layermod, ops, store
 from .graph import ChainError
 
 PORT = int(os.environ.get("GLITCHSHEET_PORT", "8090"))
 WEB_DIR = os.environ.get("GLITCHSHEET_WEB", "/opt/glitchsheet2/web")
 EXPORT_DIR = os.path.join(store.DATA_DIR, "exports")
 MAX_UPLOAD = 400 * 1024 * 1024
-VERSION = "2.0"
+VERSION = "2.1"
 
 HASH_RE = re.compile(r"^[a-f0-9]{40}$")
 ID_RE = re.compile(r"^[a-f0-9]{12}$")
@@ -112,7 +112,11 @@ class Handler(BaseHTTPRequestHandler):
                 "ops": len(ops.REGISTRY)})
 
         if p == "/api/ops":
-            return self.send_json(ops.public_registry())
+            # The layer schema rides along with the op schemas for the same
+            # reason: the studio generates its controls from it, so a new blend
+            # mode is a backend-only change.
+            return self.send_json(dict(ops.public_registry(),
+                                       layer=layermod.public_schema()))
 
         if p == "/api/sources":
             return self.send_json({"sources": store.list_sources()})
@@ -276,9 +280,15 @@ class Handler(BaseHTTPRequestHandler):
         req, err = self.json_body()
         if err:
             return self.fail(400, err)
-        chain = req.get("chain")
         upto = req.get("upto")
         upto = int(upto) if isinstance(upto, (int, float)) else None
+        if isinstance(req.get("layers"), list) and req["layers"]:
+            return self.start_stack_eval(req, upto)
+
+        # The single-chain form is still the whole API for anything that is not
+        # the studio -- a stack of one is just a chain, and scripts should not
+        # have to learn about layers to render one.
+        chain = req.get("chain")
         if req.get("preview"):
             chain = graph.preview_chain(chain if isinstance(chain, list) else [], upto)
         try:
@@ -301,6 +311,38 @@ class Handler(BaseHTTPRequestHandler):
         return self.send_json({"job": job.id, "planned": len(plan),
                                "cached": len(warm), "label": label})
 
+    def start_stack_eval(self, req, upto):
+        stack = req["layers"]
+        active = req.get("active")
+        active = int(active) if isinstance(active, (int, float)) else 0
+        if not 0 <= active < len(stack):
+            active = 0
+        view = "layer" if req.get("view") == "layer" else "composite"
+        if req.get("preview"):
+            stack = graph.preview_stack(stack, upto)
+        try:
+            st = graph.prepare_stack(stack, active, upto)
+        except ChainError as e:
+            return self.fail(400, e.msg, node=e.index, layer=e.layer)
+
+        vis = st["visible"]
+        label = ("%d layer%s" % (len(vis), "" if len(vis) == 1 else "s")
+                 if view == "composite" else "solo layer")
+
+        def work(job):
+            return graph.evaluate_stack(
+                stack, active, upto, view,
+                progress=lambda f, note: jobs.set_progress(job, f, note),
+                cancelled=lambda: job.cancel)
+
+        job = jobs.submit("eval", work, label)
+        planned = sum(len(p) for p in st["plans"].values())
+        warm = sum(1 for p in st["plans"].values() for n in p
+                   if not n["off"] and store.cached(n["hash"]))
+        return self.send_json({"job": job.id, "planned": planned, "cached": warm,
+                               "label": label, "layers": len(stack),
+                               "visible": len(vis)})
+
     def start_variants(self):
         """Sweep one parameter across a set of values and evaluate each.
 
@@ -311,7 +353,15 @@ class Handler(BaseHTTPRequestHandler):
         req, err = self.json_body()
         if err:
             return self.fail(400, err)
-        chain = req.get("chain")
+        stack = req.get("layers") if isinstance(req.get("layers"), list) else None
+        active = req.get("active")
+        active = int(active) if isinstance(active, (int, float)) else 0
+        if stack:
+            if not 0 <= active < len(stack):
+                active = 0
+            chain = (stack[active] or {}).get("chain")
+        else:
+            chain = req.get("chain")
         idx = req.get("index")
         param = req.get("param")
         values = req.get("values")
@@ -334,7 +384,15 @@ class Handler(BaseHTTPRequestHandler):
             node["params"] = dict(node.get("params") or {}, **{param: v})
             node["off"] = False
             c[idx] = node
-            variants.append((v, c))
+            if stack:
+                # A variant of a layer is the whole stack with that one layer
+                # swapped, so the grid shows the finished artwork rather than a
+                # naked layer that will look nothing like what gets printed.
+                s = [dict(ly or {}) for ly in stack]
+                s[active] = dict(s[active], chain=c)
+                variants.append((v, s))
+            else:
+                variants.append((v, c))
 
         def work(job):
             out = []
@@ -343,17 +401,22 @@ class Handler(BaseHTTPRequestHandler):
                     break
                 jobs.set_progress(job, k / len(variants),
                                   "variant %d of %d" % (k + 1, len(variants)))
+                prog = lambda f, note, k=k: jobs.set_progress(
+                    job, (k + f) / len(variants), note)
                 try:
-                    res = graph.evaluate(
-                        c, None,
-                        progress=lambda f, note, k=k: jobs.set_progress(
-                            job, (k + f) / len(variants), note),
-                        cancelled=lambda: job.cancel)
+                    if stack:
+                        res = graph.evaluate_stack(
+                            c, active, None, "composite",
+                            progress=prog, cancelled=lambda: job.cancel)
+                    else:
+                        res = graph.evaluate(
+                            c, None, progress=prog, cancelled=lambda: job.cancel)
                     out.append({"value": v, "hash": res["hash"],
                                 "notes": res["notes"]})
                 except ChainError as e:
                     # One bad value must not lose the other eleven results.
-                    out.append({"value": v, "error": e.msg, "node": e.index})
+                    out.append({"value": v, "error": e.msg, "node": e.index,
+                                "layer": e.layer})
             return {"variants": out, "param": param, "index": idx}
 
         job = jobs.submit("variants", work,
@@ -411,8 +474,22 @@ class Handler(BaseHTTPRequestHandler):
         pid = req.get("id") or store.new_id()
         if not ID_RE.match(pid):
             pid = store.new_id()
+        stack = req.get("layers")
+        if not isinstance(stack, list) or not stack:
+            stack = [{"name": "Base", "chain": req.get("chain") or []}]
+        stack = [dict(layermod.coerce_layer(ly),
+                      name=str((ly or {}).get("name") or "Layer")[:40],
+                      off=bool((ly or {}).get("off")),
+                      solo=bool((ly or {}).get("solo")),
+                      chain=(ly or {}).get("chain") or [])
+                 for ly in stack[:layermod.MAX_LAYERS]]
         doc = {"id": pid, "name": (req.get("name") or "untitled")[:80],
-               "chain": req.get("chain") or [], "tray": req.get("tray") or [],
+               "layers": stack,
+               # `chain` stays in the document as the bottom layer's chain, so a
+               # project saved by the studio can still be read by anything that
+               # only knows about v2.0's single chain.
+               "chain": stack[0]["chain"],
+               "tray": req.get("tray") or [],
                "sticker": req.get("sticker") or {}, "version": VERSION}
         return self.send_json(store.save_project(pid, doc))
 

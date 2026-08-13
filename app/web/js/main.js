@@ -9,9 +9,10 @@
 
 import { $, bytes, debounce, el, on, toast } from './dom.js';
 import { jdel, jget, jpost, pollJob } from './api.js';
-import { S, fire, on as bus, setChain } from './state.js';
+import { S, fire, makeProj, on as bus, setChain } from './state.js';
 import { initLibrary, renderLibrary } from './library.js';
 import { initChain, renderChain } from './chain.js';
+import { initLayers, renderLayers } from './layers.js';
 import { renderInspector, reloadSources } from './inspector.js';
 import { initVariants, renderVariantPanel } from './variants.js';
 import { clearViewer, initViewer, setBusy, showResult } from './viewer.js';
@@ -24,9 +25,13 @@ let gen = 0;
 
 async function evaluate({ preview = false } = {}) {
   const chain = S.proj.chain;
-  if (!chain.length) {
+  // A layer with no chain is normal -- you add the layer, then reach for the
+  // library -- so the project only counts as empty when nothing anywhere has
+  // a chain. Otherwise the stack still renders and the empty layer sits out.
+  if (!S.proj.layers.some((l) => l.chain.length)) {
     clearViewer();
     renderChain();
+    renderLayers();
     renderInspector();
     setExportEnabled(false);
     return null;
@@ -35,7 +40,10 @@ async function evaluate({ preview = false } = {}) {
   const my = ++gen;
   try {
     setBusy(true, 'evaluating', 0);
-    const start = await jpost('/api/eval', { chain, upto, preview });
+    const start = await jpost('/api/eval', {
+      layers: S.proj.layers.map(wireLayer), active: S.active,
+      upto, preview, view: S.view,
+    });
     const job = await pollJob(
       start.job,
       (j) => { if (my === gen) setBusy(true, j.note || 'evaluating', j.progress); },
@@ -44,11 +52,17 @@ async function evaluate({ preview = false } = {}) {
     if (my !== gen) return null;
     const res = job.result;
     for (const s of res.steps) S.hashes[s.i] = s.hash;
+    for (const l of res.layers || []) {
+      const layer = S.proj.layers[l.i];
+      if (layer && l.hash) S.layerOut[layer.id] = l.hash;
+    }
     S.fastPreviewShown = preview;
     S.previewHashes = preview;
+    S.composite = !!res.composite;
     S.dirty = false;
     showResult(res.hash, res.meta, res.notes);
     renderChain();
+    renderLayers();
     renderInspector();
     renderDpiNote();
     setExportEnabled(true);
@@ -56,12 +70,19 @@ async function evaluate({ preview = false } = {}) {
   } catch (e) {
     if (e.cancelled || my !== gen) return null;
     toast(e.message, true);
-    // Point at the node that actually failed instead of blaming the chain.
-    if (e.node !== undefined && e.node >= 0 && e.node < chain.length) {
-      S.sel = e.node;
-      renderChain();
-      renderInspector();
+    // Point at the layer and node that actually failed instead of blaming the
+    // project. Selecting the layer first matters: the node index is an index
+    // into THAT layer's chain and means nothing against another one.
+    if (e.layer !== undefined && e.layer !== null && S.proj.layers[e.layer]) {
+      S.active = e.layer;
+      S.hashes = S.hashCache[S.proj.layers[e.layer].id] || {};
     }
+    if (e.node !== undefined && e.node >= 0 && e.node < S.proj.chain.length) {
+      S.sel = e.node;
+    }
+    renderChain();
+    renderLayers();
+    renderInspector();
     setExportEnabled(false);
     return null;
   } finally {
@@ -69,10 +90,19 @@ async function evaluate({ preview = false } = {}) {
   }
 }
 
+/** What actually goes over the wire: the engine has no use for our ids, and
+ *  a layer's node hashes are ours alone. */
+function wireLayer(l) {
+  const { id, ...rest } = l;
+  return rest;
+}
+
 /** Keep and export must never ship a downscaled preview. */
 async function ensureFull() {
-  if (!S.proj.chain.length) return null;
-  if (S.hashes[S.sel] && !S.previewHashes) return S.hashes[S.sel];
+  if (!S.proj.layers.some((l) => l.chain.length)) return null;
+  // Whatever is on screen is what gets kept -- composite or soloed layer --
+  // so the tray can never quietly hold something you were not looking at.
+  if (S.shownHash && !S.previewHashes) return S.shownHash;
   return evaluate({ preview: false });
 }
 
@@ -80,9 +110,14 @@ const evalSoon = debounce(() => evaluate({ preview: S.fast }), 220);
 
 /* --------------------------------------------------------------- events -- */
 
-bus('chain', () => { renderChain(); renderInspector(); renderVariantPanel(); evalSoon(); });
+bus('chain', () => { renderChain(); renderLayers(); renderInspector(); renderVariantPanel(); evalSoon(); });
 bus('select', () => { renderChain(); renderInspector(); renderVariantPanel(); evalSoon(); });
 bus('params', () => { renderChain(); evalSoon(); });
+// Structural stack changes redraw everything; a compositing setting must not
+// rebuild the inspector, or the slider being dragged is destroyed under the
+// pointer -- the same split setParam/'params' already makes for node params.
+bus('layers', () => { renderLayers(); renderChain(); renderInspector(); renderVariantPanel(); evalSoon(); });
+bus('layerprop', () => { renderLayers(); evalSoon(); });
 bus('commit', () => { evalSoon.cancel(); evaluate({ preview: false }); });
 bus('starter', () => { renderVariantPanel(); });
 bus('keep', () => keep(ensureFull));
@@ -93,7 +128,7 @@ async function saveProject() {
   try {
     const doc = await jpost('/api/project', {
       id: S.proj.id, name: $('#projname').value || 'untitled',
-      chain: S.proj.chain, tray: S.proj.tray, sticker: S.sticker,
+      layers: S.proj.layers, tray: S.proj.tray, sticker: S.sticker,
     });
     S.proj.id = doc.id;
     S.proj.name = doc.name;
@@ -114,10 +149,11 @@ async function openDialog() {
       list.append(el('button', {
         onclick: async () => {
           const doc = await jget('/api/project/' + p.id);
-          S.proj = {
-            id: doc.id, name: doc.name,
-            chain: doc.chain || [], tray: doc.tray || [],
-          };
+          S.active = 0;
+          S.hashes = {};
+          S.hashCache = {};
+          S.layerOut = {};
+          S.proj = makeProj(doc);
           if (doc.sticker) Object.assign(S.sticker, doc.sticker);
           $('#projname').value = doc.name;
           $('#mm').value = S.sticker.mm;
@@ -128,7 +164,8 @@ async function openDialog() {
         },
       },
       el('b', {}, p.name),
-      el('span', {}, `${p.nodes} node${p.nodes === 1 ? '' : 's'}`),
+      el('span', {}, `${p.nodes} node${p.nodes === 1 ? '' : 's'}` +
+        (p.layers > 1 ? ` · ${p.layers} layers` : '')),
       el('span', { class: 'spacer' }, ''),
       el('span', {}, new Date(p.saved * 1000).toLocaleDateString()),
       el('span', {
@@ -156,6 +193,7 @@ async function boot() {
   initViewer();
   initZoom();
   initChain();
+  initLayers();
   initLibrary();
   initVariants();
   initTray(ensureFull);
@@ -164,7 +202,11 @@ async function boot() {
   on($('#open'), 'click', openDialog);
   on($('#closeopen'), 'click', () => $('#opendlg').close());
   on($('#newproj'), 'click', () => {
-    S.proj = { id: null, name: 'untitled', chain: [], tray: [] };
+    S.active = 0;
+    S.hashes = {};
+    S.hashCache = {};
+    S.layerOut = {};
+    S.proj = makeProj();
     $('#projname').value = 'untitled';
     renderTray();
     setChain([]);
@@ -191,13 +233,18 @@ async function boot() {
     S.ops = reg.ops;
     S.cats = reg.categories;
     S.byId = Object.fromEntries(reg.ops.map((o) => [o.id, o]));
+    if (reg.layer) S.layerSpec = reg.layer;
   } catch (e) {
     toast('Could not reach the engine: ' + e.message, true);
     return;
   }
+  // Rebuilt now the layer schema is known, so the first layer carries the
+  // engine's own compositing defaults rather than a guess.
+  S.proj = makeProj(S.proj);
   await reloadSources();
   renderLibrary();
   renderChain();
+  renderLayers();
   renderInspector();
   renderVariantPanel();
   renderTray();

@@ -12,7 +12,7 @@ import os
 import numpy as np
 
 from .. import ff, nputil, palettes, store
-from ..clip import Clip
+from ..clip import Clip, check_budget
 from . import colour as colour_param
 from . import flag, num, op, pick, seed, src
 
@@ -198,6 +198,9 @@ def _register_generators():
                 rng = np.random.default_rng(int(p["seed"]))
                 n = int(p["frames"])
                 h, w = int(p["height"]), int(p["width"])
+                # The fields below are float32 and several deep, so this
+                # has to happen before the first allocation, not at Clip().
+                check_budget(n, h, w)
                 ctx.progress(0.2, "generating")
                 field = fn(rng, n, h, w, p)
                 ctx.progress(0.8, "colouring")
@@ -241,6 +244,7 @@ def media(clip, p, ctx):
         raise ValueError("That upload is no longer on disk.")
     ctx.progress(0.3, "reading %s" % meta.get("name", "file"))
     n = int(p["frames"])
+    check_budget(n, int(p["height"]), int(p["width"]))
     out = ff.extract(path, ctx.workdir, n, p["fps"], int(p["width"]),
                      int(p["height"]), start=p["start"], fit=p["fit"])
     if out.n < n and meta.get("duration", 0) <= 0.3:
@@ -263,6 +267,7 @@ def media(clip, p, ctx):
     ], varies=())
 def solid(clip, p, ctx):
     r, g, b = palettes.hex_rgb(p["fill"])
+    check_budget(int(p["frames"]), int(p["height"]), int(p["width"]))
     return Clip.solid(int(p["width"]), int(p["height"]), (r, g, b, 255),
                       int(p["frames"]), p["fps"])
 
@@ -275,6 +280,7 @@ def solid(clip, p, ctx):
     ]), varies=("angle", "seed"))
 def gradient(clip, p, ctx):
     n, h, w = int(p["frames"]), int(p["height"]), int(p["width"])
+    check_budget(n, h, w)
     xs, ys = nputil.grid(n, h, w)
     cx, cy = w / 2, h / 2
     if p["shape"] == "radial":

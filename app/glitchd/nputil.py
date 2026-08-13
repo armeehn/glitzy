@@ -15,31 +15,68 @@ from PIL import Image
 # Sampling
 # ---------------------------------------------------------------------------
 
+# The four corner gathers below each materialise a full float32 copy of the
+# source, and the integer index arrays cost another 8 bytes per pixel apiece.
+# Done over a whole clip at once that peaks near 220 bytes for every 4 bytes of
+# actual picture -- so an ordinary 480x480x48 clip wanted ~2.4 GB and the
+# cgroup SIGKILLed the engine mid-render, which reaches the browser as a 502
+# rather than as an error the studio can show. Frames are independent here, so
+# the fix is to sample a block at a time and keep peak memory flat in n.
+SAMPLE_BLOCK_BYTES = 48 << 20
+
+
 def sample_bilinear(src, x, y, wrap=True):
     """Sample src at floating (x, y) per pixel.
 
     src is (n,h,w) or (n,h,w,c); x and y are (n,h,w) in pixel coordinates.
     This is the engine behind every warp, displace and slit-scan op.
+
+    Pass src as uint8 where you have it: the upcast happens per block on the
+    gathered corners, so the caller never has to hold a float32 copy of the
+    whole stack just to get here.
     """
     n, h, w = src.shape[:3]
-    x0 = np.floor(x).astype(np.int64)
-    y0 = np.floor(y).astype(np.int64)
-    fx = (x - x0).astype(np.float32)
-    fy = (y - y0).astype(np.float32)
-    x1, y1 = x0 + 1, y0 + 1
-    if wrap:
-        x0 %= w; x1 %= w; y0 %= h; y1 %= h
-    else:
-        x0 = np.clip(x0, 0, w - 1); x1 = np.clip(x1, 0, w - 1)
-        y0 = np.clip(y0, 0, h - 1); y1 = np.clip(y1, 0, h - 1)
-    fi = np.arange(n)[:, None, None]
-    if src.ndim == 4:
-        fx = fx[..., None]; fy = fy[..., None]
-    a = src[fi, y0, x0]; b = src[fi, y0, x1]
-    c = src[fi, y1, x0]; d = src[fi, y1, x1]
-    top = a + (b - a) * fx
-    bot = c + (d - c) * fx
-    return top + (bot - top) * fy
+    tail = src.shape[3:]
+    # x and y are usually already (n,h,w); broadcasting makes a partial grid
+    # (a single frame's worth, say) sliceable without copying it.
+    x = np.broadcast_to(x, (n, h, w))
+    y = np.broadcast_to(y, (n, h, w))
+    out = np.empty((n, h, w) + tail, np.float32)
+
+    chan = int(np.prod(tail)) if tail else 1
+    # Per frame: 4 gathers + 2 lerps + their temporaries at 4 bytes a channel,
+    # plus fx/fy and four int64 index planes. Ten-ish full planes, so budget
+    # for twelve and let the block count fall out of it.
+    per_frame = h * w * (chan * 4 * 8 + 4 * 8)
+    step = max(1, min(n, SAMPLE_BLOCK_BYTES // max(per_frame, 1)))
+
+    for s in range(0, n, step):
+        e = min(n, s + step)
+        xb, yb = x[s:e], y[s:e]
+        x0 = np.floor(xb).astype(np.int64)
+        y0 = np.floor(yb).astype(np.int64)
+        fx = (xb - x0).astype(np.float32)
+        fy = (yb - y0).astype(np.float32)
+        x1, y1 = x0 + 1, y0 + 1
+        if wrap:
+            x0 %= w; x1 %= w; y0 %= h; y1 %= h
+        else:
+            x0 = np.clip(x0, 0, w - 1); x1 = np.clip(x1, 0, w - 1)
+            y0 = np.clip(y0, 0, h - 1); y1 = np.clip(y1, 0, h - 1)
+        # Absolute frame indices: the gather still reads the untouched src.
+        fi = np.arange(s, e)[:, None, None]
+        if src.ndim == 4:
+            fx = fx[..., None]; fy = fy[..., None]
+        # uint8 corners must be upcast before the lerp or the subtraction
+        # wraps around; float32 input passes straight through as a view.
+        a = src[fi, y0, x0].astype(np.float32, copy=False)
+        b = src[fi, y0, x1].astype(np.float32, copy=False)
+        c = src[fi, y1, x0].astype(np.float32, copy=False)
+        d = src[fi, y1, x1].astype(np.float32, copy=False)
+        top = a + (b - a) * fx
+        bot = c + (d - c) * fx
+        out[s:e] = top + (bot - top) * fy
+    return out
 
 
 def grid(n, h, w):

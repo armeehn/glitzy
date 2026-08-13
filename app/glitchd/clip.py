@@ -18,16 +18,39 @@ import os
 import numpy as np
 from PIL import Image
 
-# A clip is held in RAM as uint8 RGBA. 2 GB of container with the engine
-# capped below that means a hard ceiling on total pixels: 480x480x48 is
-# ~44 MB, 1200x1200x48 would be ~276 MB. Refuse anything past the budget
-# rather than inviting the OOM killer to take the service down mid-cook.
-MAX_PIXELS = 220_000_000  # n * w * h, ~880 MB of RGBA at the limit
+# A clip is held in RAM as uint8 RGBA, but its own 4 bytes a pixel are not
+# what decides this number -- what an OP costs while working on it is. The
+# warp family (displace, transform, wave, polar, drift) gathers four corner
+# copies plus coordinate planes, and measures at ~75 bytes per pixel even
+# after the block-wise sampling in nputil. The old limit was derived from the
+# clip's own size instead and was wrong by a factor of ~35: it admitted clips
+# that could not survive a single op, so instead of raising ClipTooBig the
+# cgroup SIGKILLed the whole engine and every open studio got a 502.
+#
+# 12M pixels x ~75 B ~= 900 MB, inside the unit's MemoryMax=1400M with room
+# for the interpreter and the page cache. Keep this in step with MAX_WORKERS
+# in jobs.py: the budget is per render, and renders run one at a time.
+MAX_PIXELS = 12_000_000  # n * w * h; 480x480x48 fits, 480x480x60 does not
 THUMB_W = 200
 
 
 class ClipTooBig(Exception):
     pass
+
+
+def check_budget(n, h, w):
+    """Refuse an oversized clip BEFORE anything allocates it.
+
+    Clip.__init__ is too late for the ops that BUILD a stack rather than
+    receive one: a source generator at 1600x1600x240 has already filled
+    several float32 fields by the time it hands them over, and the OOM killer
+    reaches the browser as a 502 instead of as this exception. Anything that
+    knows its output size up front should call this first.
+    """
+    if n * h * w > MAX_PIXELS:
+        raise ClipTooBig(
+            "%d frames at %dx%d is past the engine's memory budget. "
+            "Drop the frame count or the working size." % (n, w, h))
 
 
 class Clip:
@@ -45,10 +68,7 @@ class Clip:
         if a.dtype != np.uint8:
             a = np.clip(a, 0, 255).astype(np.uint8)
         n, h, w = a.shape[:3]
-        if n * h * w > MAX_PIXELS:
-            raise ClipTooBig(
-                "%d frames at %dx%d is past the engine's memory budget. "
-                "Drop the frame count or the working size." % (n, w, h))
+        check_budget(n, h, w)
         self.frames = a
         self.fps = float(fps) or 25.0
 

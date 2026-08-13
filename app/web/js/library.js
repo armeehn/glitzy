@@ -6,7 +6,7 @@
  */
 
 import { $, el, on } from './dom.js';
-import { S, addOp, fire } from './state.js';
+import { S, addOp, fire, setLayerProp } from './state.js';
 import { STARTERS, buildChain } from './starters.js';
 import { defaults, setChain } from './state.js';
 
@@ -56,9 +56,17 @@ function renderStarters() {
     host.append(el('button', {
       title: st.blurb,
       onclick: () => {
+        // On a stack, a starter is a layer preset: it fills the layer you are
+        // in and takes its name. Renaming the whole project because you
+        // dropped a background behind your artwork would be presumptuous.
+        const stacked = S.proj.layers.length > 1;
         setChain(buildChain(st, defaults));
-        S.proj.name = st.name;
-        $('#projname').value = st.name;
+        if (stacked) {
+          setLayerProp(S.active, 'name', st.name);
+        } else {
+          S.proj.name = st.name;
+          $('#projname').value = st.name;
+        }
         fire('starter', st);
       },
     }, el('b', {}, st.name), el('i', {}, st.blurb)));

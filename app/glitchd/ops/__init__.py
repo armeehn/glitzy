@@ -146,9 +146,20 @@ def coerce(op_id, raw):
     entry = REGISTRY.get(op_id)
     if not entry:
         return None, "Unknown op %r." % (op_id,)
+    return coerce_specs(entry["params"], raw)
+
+
+def coerce_specs(specs, raw):
+    """The clamping half of coerce(), against any schema rather than an op's.
+
+    Split out because a layer's compositing settings are declared with the
+    same helpers and have to be sanitised the same way -- the alternative was
+    a second, subtly different validator, which is how a studio ends up with
+    one path that clamps and one that does not.
+    """
     raw = raw if isinstance(raw, dict) else {}
     out = {}
-    for spec in entry["params"]:
+    for spec in specs:
         k, t = spec["k"], spec["type"]
         v = raw.get(k, spec["def"])
         if t in ("num", "seed"):

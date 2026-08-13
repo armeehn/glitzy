@@ -35,10 +35,11 @@ export async function keep(ensureFull) {
   const hash = await ensureFull();
   if (!hash) return;
   const spec = S.byId[(S.proj.chain[S.sel] || {}).op];
+  const vis = S.proj.layers.filter((l) => !l.off && l.chain.length).length;
   S.proj.tray.push({
     hash, frame: S.frame, mm: S.sticker.mm,
     name: (S.proj.name || 'sticker') + ' ' + (S.proj.tray.length + 1),
-    label: spec ? spec.label : '',
+    label: S.composite ? `${vis} layers` : (spec ? spec.label : ''),
   });
   renderTray();
   toast(`Kept — ${S.proj.tray.length} on the sheet.`);

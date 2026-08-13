@@ -49,6 +49,10 @@ function step(d) {
 export function showResult(hash, meta, notes = []) {
   S.meta = meta;
   S.notes = notes;
+  // What is on screen is what Keep and the exports use, so it is recorded
+  // here rather than recomputed from the chain -- with a stack, the visible
+  // result is often the composite, which belongs to no node at all.
+  S.shownHash = hash;
   const slider = $('#frame');
   const n = meta ? meta.n : 0;
   if (S.frame >= n) S.frame = 0;
@@ -92,6 +96,7 @@ function showFrame(hash) {
 export function clearViewer() {
   currentHash = null;
   S.meta = null;
+  S.shownHash = null;
   clearInterval(timer);
   S.playing = false;
   $('#play').textContent = '▶';
@@ -108,6 +113,13 @@ function renderOsd(meta, notes) {
   osd.textContent = '';
   if (!meta) return;
   const spec = S.byId[(S.proj.chain[S.sel] || {}).op];
+  if (S.composite) {
+    const vis = S.proj.layers.filter((l) => !l.off && l.chain.length).length;
+    osd.append(el('span', { class: 'chip' }, `composite · ${vis} layers`));
+  } else if (S.view === 'layer' && S.proj.layers.length > 1) {
+    osd.append(el('span', { class: 'chip warn' },
+      'solo · ' + ((S.proj.layers[S.active] || {}).name || 'layer')));
+  }
   if (spec) osd.append(el('span', { class: 'chip' }, spec.label));
   osd.append(el('span', { class: 'chip dim' }, `${meta.w}×${meta.h}`));
   if (meta.n > 1) {
