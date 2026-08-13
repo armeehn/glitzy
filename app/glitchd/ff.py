@@ -190,9 +190,17 @@ def extract(path, workdir, n, fps, w, h, start=0.0, fit="cover"):
     else:
         vf = "scale=%d:%d" % (w, h)
     pre = ["-ss", "%g" % start] if start > 0 else []
+    # `-r` resamples the source to the working rate, which is a CFR request, so
+    # the frame-rate mode has to agree with it. The old `-vsync 0` asked for
+    # passthrough at the same time and ffgac refuses the pair outright --
+    # "One of -r/-fpsmax was specified together a non-CFR -vsync/-fps_mode" --
+    # writing no output file at all, so every uploaded or fetched source failed
+    # with "Could not read any frame". Passthrough is also the wrong answer
+    # here: it would hand back the first n source frames and play a 30fps clip
+    # at the working 25, i.e. slow motion.
     rc, err = run([FFGAC, "-hide_banner"] + pre + ["-i", path,
                   "-frames:v", str(n), "-r", "%g" % fps, "-vf", vf,
-                  "-vsync", "0", "-f", "image2",
+                  "-fps_mode", "cfr", "-f", "image2",
                   os.path.join(fdir, "f_%05d.png")])
     names = sorted(f for f in os.listdir(fdir) if f.endswith(".png"))
     if not names:

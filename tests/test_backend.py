@@ -25,7 +25,7 @@ os.environ.setdefault("GLITCHSHEET_RACK", os.path.join(os.path.dirname(HERE), "r
 
 import numpy as np  # noqa: E402
 
-from glitchd import exporters, graph, layers, nputil, ops, store  # noqa: E402
+from glitchd import exporters, ff, graph, layers, nputil, ops, store  # noqa: E402
 from glitchd.clip import Clip, ClipTooBig  # noqa: E402
 from glitchd.graph import ChainError  # noqa: E402
 
@@ -203,6 +203,100 @@ try:
     check("a missing source is reported", False)
 except ChainError as e:
     check("a missing source is reported", e.index == 0, e.msg)
+
+
+# ---------------------------------------------------------------------------
+section("uploaded sources actually decode")
+# ---------------------------------------------------------------------------
+# Everything above this point uses the numpy generators, which never touch
+# ffgac's demuxer. That left source.media covered only by the missing-id case
+# above -- which returns before ff.extract runs -- so a decode that wrote no
+# output file at all shipped undetected: `-r` (a CFR request) was passed
+# alongside `-vsync 0` (passthrough), ffgac refused the contradiction, and
+# every uploaded or URL-fetched file failed with "Could not read any frame".
+# These tests run the real demuxer on a real still and a real clip.
+
+def register_source(name, build):
+    """Put a real file on disk exactly as an upload would, and register it."""
+    sid = store.new_source()
+    path = os.path.join(store.source_dir(sid), name)
+    build(path)
+    probe = ff.probe(path)
+    store.write_source_meta(sid, {
+        "name": name, "file": name, "bytes": os.path.getsize(path),
+        "kind": "video" if probe["duration"] > 0.3 else "image", **probe})
+    return sid
+
+
+def build_still(path):
+    frame = np.dstack([
+        np.tile(np.arange(64, dtype=np.uint8), (48, 1)),
+        np.tile(np.arange(48, dtype=np.uint8)[:, None], (1, 64)),
+        np.full((48, 64), 200, np.uint8),
+        np.full((48, 64), 255, np.uint8),
+    ])
+    with open(path, "wb") as fh:
+        fh.write(Clip(frame[None], 25).png_bytes(0))
+
+
+def build_clip(path):
+    # testsrc moves, so frames taken from different spans differ.
+    rc, err = ff.run([ff.FFGAC, "-hide_banner", "-f", "lavfi", "-i",
+                      "testsrc=size=128x96:rate=30:duration=3",
+                      "-c:v", "mpeg4", "-q:v", "3", "-y", path])
+    assert rc == 0, err
+
+
+def pull(sid, fps, n=24, start=0):
+    """Decode a source, reporting a failed decode instead of raising.
+
+    A broken decoder throws out of graph.evaluate, and an uncaught ChainError
+    here would abort the run and hide every test below -- which is how one
+    ffgac argument managed to look like a healthy suite.
+    """
+    try:
+        r = graph.evaluate([{"op": "source.media", "params": {
+            "src": sid, "width": 96, "height": 96, "frames": n, "fps": fps,
+            "start": start, "fit": "cover"}}])
+        return Clip.load(store.cache_path(r["hash"])), ""
+    except ChainError as e:
+        return None, e.msg.splitlines()[0]
+
+
+still_id = register_source("src.png", build_still)
+check("a still probes as an image",
+      store.source_meta(still_id)["kind"] == "image", store.source_meta(still_id))
+
+still_clip, err = pull(still_id, 25, n=8)
+if check("a still decodes at all", still_clip is not None, err):
+    check("a still decodes at the working size",
+          still_clip.frames.shape[1:3] == (96, 96), still_clip.frames.shape)
+    check("a still is held for the requested frame count", still_clip.n == 8,
+          still_clip.n)
+    check("every held frame is identical",
+          np.array_equal(still_clip.frames[0], still_clip.frames[-1]))
+
+clip_id = register_source("src.mp4", build_clip)
+check("a clip probes as a video",
+      store.source_meta(clip_id)["kind"] == "video", store.source_meta(clip_id))
+
+fast, ferr = pull(clip_id, 25)
+slow, serr = pull(clip_id, 12)
+seek, kerr = pull(clip_id, 25, start=2)
+if check("a clip decodes at all", None not in (fast, slow, seek),
+         ferr or serr or kerr):
+    check("a clip decodes the requested frame count", fast.n == 24, fast.n)
+    check("a clip decodes at the working size",
+          fast.frames.shape[1:3] == (96, 96), fast.frames.shape)
+    # The regression that matters: dropping `-r` instead of fixing the
+    # frame-rate mode would also stop the error, but it would silently ignore
+    # the rate and hand back the same source frames at every setting -- a
+    # 30fps clip played at the working 25 as slow motion. Different rates must
+    # sample different spans.
+    check("the working rate resamples rather than passing frames through",
+          not np.array_equal(fast.frames[-1], slow.frames[-1]))
+    check("seeking into a clip lands somewhere else",
+          not np.array_equal(seek.frames[0], fast.frames[0]))
 
 
 # ---------------------------------------------------------------------------
