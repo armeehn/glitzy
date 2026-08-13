@@ -27,7 +27,7 @@ import os
 import numpy as np
 from PIL import Image
 
-from .clip import MAX_PIXELS, Clip, ClipTooBig
+from .clip import Clip, check_budget
 from .ops import flag, num, pick, coerce_specs
 
 MAX_LAYERS = 8
@@ -304,11 +304,10 @@ def composite(entries, progress=None, cancelled=None):
     # Checked BEFORE the buffer is allocated, not by Clip afterwards: the
     # allocation is the thing that would be refused, and on this container an
     # over-budget np.zeros is not an exception, it is the OOM killer taking
-    # the engine down and 502ing everyone with the studio open.
-    if n * ch * cw > MAX_PIXELS:
-        raise ClipTooBig(
-            "%d frames at %dx%d is past the engine's memory budget. Shorten "
-            "the longest layer, or work smaller." % (n, cw, ch))
+    # the engine down and reaching the browser as a 502. A stack can exceed
+    # the budget without any single layer doing so -- the canvas runs as long
+    # as its longest layer, so two legal layers can make an illegal composite.
+    check_budget(n, ch, cw)
     placed = [Placed(d, m, spec, cw, ch) for m, d, spec in entries]
     out = np.zeros((n, ch, cw, 4), np.uint8)
 
