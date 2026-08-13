@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Glitchsheet</title>
+<link rel="stylesheet" href="/css/studio.css">
+</head>
+<body>
+<div class="shell">
+
+  <header class="top">
+    <div class="brand"><b>Glitchsheet</b><span>studio</span></div>
+    <input id="projname" class="projname" value="untitled" spellcheck="false"
+           aria-label="Project name">
+    <button class="btn sm" id="save">Save</button>
+    <button class="btn sm" id="open">Open</button>
+    <button class="btn sm" id="newproj">New</button>
+    <div class="spacer"></div>
+    <span class="stat" title="Cached chain results">Cache <b id="s-cache">—</b></span>
+    <span class="stat">Engine <b id="s-engine">…</b></span>
+    <span class="chip dim" id="s-job">idle</span>
+    <a class="btn ghost sm" href="https://cutsheet.armeehn.workers.dev/" target="_blank"
+       rel="noopener">Cutsheet ↗</a>
+    <button class="btn sm only-narrow" id="panes" aria-label="Switch panel">Panels</button>
+  </header>
+
+  <div class="main" id="main">
+
+    <aside class="rail left" id="rail-left">
+      <section class="panel">
+        <h2 class="ph">Library <span class="chip dim" id="opcount">0</span></h2>
+        <div class="pbody">
+          <input type="search" id="opsearch" placeholder="Search ops…" spellcheck="false">
+          <div id="library" class="library"></div>
+        </div>
+      </section>
+      <section class="panel">
+        <h2 class="ph">Starters</h2>
+        <div class="pbody">
+          <div class="tpl" id="starters"></div>
+        </div>
+      </section>
+    </aside>
+
+    <section class="centre">
+      <div class="stagewrap">
+        <div class="osd" id="osd"></div>
+        <div class="stage" id="stage">
+          <img id="view" alt="" hidden>
+        </div>
+        <div class="empty" id="empty">
+          <h2>Start with a source</h2>
+          <p>Pick a starter on the left, or add a source op and build up from there.
+             Every node is cached, so changing the last one never re-runs the rest.</p>
+        </div>
+        <div class="toast" id="toast" hidden></div>
+      </div>
+
+      <div class="transport">
+        <div class="prog"><i id="bar"></i></div>
+        <div class="trow">
+          <button class="btn sm" id="play" disabled>▶</button>
+          <input type="range" id="frame" min="0" max="0" value="0" disabled
+                 aria-label="Frame">
+          <span class="stat mono"><b id="s-frame">0</b>/<b id="s-frames">0</b></span>
+          <span class="stat mono" id="s-size">—</span>
+          <div class="spacer"></div>
+          <label class="inline"><input type="checkbox" id="fastpreview" checked>
+            <span>Fast preview</span></label>
+          <button class="btn sm" id="renderall">Render to end</button>
+          <button class="btn sm primary" id="keep" disabled>Keep</button>
+        </div>
+      </div>
+
+      <div class="chainwrap">
+        <div class="chainhead">
+          <span class="ph">Chain</span>
+          <span class="stat" id="s-chainnote"></span>
+          <div class="spacer"></div>
+          <button class="btn sm" id="clearchain">Clear</button>
+        </div>
+        <div class="chain" id="chain"></div>
+      </div>
+    </section>
+
+    <aside class="rail right" id="rail-right">
+      <section class="panel" id="inspector-panel">
+        <h2 class="ph">Inspector <span class="chip dim" id="s-node">nothing selected</span></h2>
+        <div class="pbody" id="inspector"></div>
+      </section>
+
+      <section class="panel">
+        <h2 class="ph">Variants</h2>
+        <div class="pbody">
+          <label class="f"><span>Sweep</span>
+            <select id="vparam"><option value="">select a node first</option></select></label>
+          <div class="row">
+            <label class="f"><span>Count <b id="vnv">8</b></span>
+              <input type="range" id="vn" min="2" max="16" value="8"></label>
+            <label class="f"><span>Spread <b id="vspv">100%</b></span>
+              <input type="range" id="vspread" min="10" max="100" value="100"></label>
+          </div>
+          <button class="btn primary wide" id="sweep" disabled>Sweep</button>
+          <div class="vgrid" id="vgrid"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2 class="ph">Tray <span class="chip dim" id="traycount">0</span>
+          <button class="act" id="clearall">clear</button></h2>
+        <div class="pbody">
+          <div class="tray" id="tray"></div>
+          <p class="hint" id="trayhint">Kept results land here. Each becomes a sticker on the sheet.</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2 class="ph">Export</h2>
+        <div class="pbody">
+          <div class="row">
+            <label class="f"><span>Printed width <b id="mmv">76 mm</b></span>
+              <input type="range" id="mm" min="20" max="200" value="76"></label>
+          </div>
+          <div class="row">
+            <label class="f"><span>Machine</span>
+              <select id="machine">
+                <option value="generic">Generic cutter</option>
+                <option value="cricut">Cricut</option>
+                <option value="silhouette">Silhouette</option>
+                <option value="roland">Roland</option>
+              </select></label>
+            <label class="f"><span>DPI</span>
+              <select id="dpi"><option>150</option><option selected>300</option>
+                <option>600</option></select></label>
+          </div>
+          <p class="hint" id="dpinote">—</p>
+          <div class="row wrap">
+            <button class="btn" id="ex-png" disabled>PNG</button>
+            <button class="btn" id="ex-seq" disabled>Frames .zip</button>
+            <button class="btn" id="ex-gif" disabled>GIF</button>
+            <button class="btn" id="ex-apng" disabled>APNG</button>
+          </div>
+          <button class="btn primary wide" id="ex-sheet" disabled>Build .cutsheet.json</button>
+          <p class="hint">Open the sheet in Cutsheet with <b>Open project</b>. The cut
+             line follows the artwork's own alpha, so the silhouette and its die-cut
+             border come with it.</p>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<dialog id="opendlg">
+  <h3>Open a project</h3>
+  <div id="projlist" class="projlist"></div>
+  <div class="row end"><button class="btn sm" id="closeopen">Close</button></div>
+</dialog>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
