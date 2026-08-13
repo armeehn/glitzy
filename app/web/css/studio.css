@@ -72,6 +72,15 @@ h2,h3{margin:0;font-size:inherit;font-weight:inherit}
 
 .panel{border-bottom:1px solid var(--rule);padding:.65rem .7rem;min-width:0;
   display:block;flex:0 0 auto}
+/* Collapsible panels, as v1 had. The right rail's ordinary content is taller
+   than the window at every viewport (inspector + variants + export alone come
+   to ~1460px), so without a way to fold a panel away, Export is permanently
+   below the fold. `summary` carries the .ph styling; the marker replaces the
+   ::after rule so the header still reads as a header. */
+summary.ph{cursor:pointer;list-style:none;user-select:none}
+summary.ph::-webkit-details-marker{display:none}
+summary.ph .fold{font-size:.7rem;color:var(--fg-dim);transition:transform .12s}
+details.panel[open]>summary.ph .fold{transform:rotate(90deg)}
 .pbody{display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem;min-width:0}
 .ph{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;font-weight:700;
   color:var(--fg-dim);display:flex;align-items:center;gap:.5rem}
@@ -272,8 +281,13 @@ input[type=file]{display:none}
   text-transform:uppercase;letter-spacing:.08em}
 
 /* ------------------------------------------------------------- variants -- */
-.vgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:.3rem;
-  max-height:34vh;overflow-y:auto}
+/* Deliberately NOT its own scroller. A nested max-height box inside the rail
+   eats the wheel: a gesture over the grid scrolls the grid, and only chains to
+   the rail once the inner box has bottomed out. .vgrid sits directly above Tray
+   and Export, so that made scrolling *towards* Export the one gesture that
+   appeared to do nothing -- which is why the GIF button read as missing. One
+   scroller for the whole rail; the grid is just tall. */
+.vgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:.3rem}
 .vcard{border:1px solid var(--rule);background:var(--bg);display:flex;
   flex-direction:column;cursor:pointer;padding:0}
 .vcard[data-cur=true]{border-color:var(--pink)}
@@ -307,6 +321,22 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
   text-align:left;display:flex;gap:.5rem;align-items:baseline}
 .projlist button b{font-size:.72rem}
 .projlist button span{font-size:.58rem;color:var(--fg-dim)}
+
+/* The files list is rows of links, not a list of buttons, so it gets its own
+   class rather than borrowing .projlist -- whose `button` rule would turn the
+   per-row copy/delete actions into full-width bars. */
+#filesdlg{min-width:min(680px,94vw)}
+.filelist{display:flex;flex-direction:column;gap:.25rem;margin:.7rem 0;
+  max-height:50vh;overflow-y:auto}
+.frow{display:flex;gap:.5rem;align-items:baseline;background:var(--raised);
+  border:1px solid var(--rule);padding:.4rem .5rem;min-width:0}
+.frow .fname{font-size:.72rem;font-weight:700;color:var(--fg);flex:0 1 auto;
+  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frow .fmeta{font-size:.58rem;color:var(--fg-dim);white-space:nowrap}
+/* The link is the point of the row, but it is also the longest thing in it:
+   let it shrink and ellipsise instead of pushing the actions off the edge. */
+.frow .flink{font-size:.58rem;color:var(--fg-dim);flex:0 1 auto;min-width:3rem;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl}
 
 .only-narrow{display:none}
 

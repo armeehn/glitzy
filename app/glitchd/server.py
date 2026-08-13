@@ -27,9 +27,14 @@ from .graph import ChainError
 
 PORT = int(os.environ.get("GLITCHSHEET_PORT", "8090"))
 WEB_DIR = os.environ.get("GLITCHSHEET_WEB", "/opt/glitchsheet2/web")
-EXPORT_DIR = os.path.join(store.DATA_DIR, "exports")
 MAX_UPLOAD = 400 * 1024 * 1024
 VERSION = "2.1"
+
+# Where "Open in Cutsheet" sends people. Configuration, not a constant in the
+# UI: the studio must never navigate to a URL that came from the page, or the
+# leaving-interstitial becomes an open redirect. The deployment decides, the
+# browser only obeys, and an empty value hides the button entirely.
+CUTSHEET_URL = (os.environ.get("GLITCHSHEET_CUTSHEET") or "").strip().rstrip("/")
 
 HASH_RE = re.compile(r"^[a-f0-9]{40}$")
 ID_RE = re.compile(r"^[a-f0-9]{12}$")
@@ -109,7 +114,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({
                 "ok": True, "version": VERSION, "ffglitch": "0.10.2",
                 "jobs": jobs.stats(), "cache": store.cache_stats(),
-                "ops": len(ops.REGISTRY)})
+                "ops": len(ops.REGISTRY), "cutsheet": CUTSHEET_URL})
 
         if p == "/api/ops":
             # The layer schema rides along with the op schemas for the same
@@ -123,6 +128,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if p == "/api/projects":
             return self.send_json({"projects": store.list_projects()})
+
+        m = re.match(r"^/api/project/([a-f0-9]{12})/file$", p)
+        if m:
+            return self.serve_project_file(m.group(1))
 
         m = re.match(r"^/api/project/([a-f0-9]{12})$", p)
         if m:
@@ -151,9 +160,13 @@ class Handler(BaseHTTPRequestHandler):
                 # Content-addressed, so the bytes behind a URL never change.
                 return self.send_bytes(fh.read(), ct, "public, max-age=31536000, immutable")
 
-        m = re.match(r"^/api/download/([a-f0-9]{12})$", p)
+        if p == "/api/files":
+            return self.send_json({"files": store.list_files(),
+                                   "stats": store.files_stats()})
+
+        m = re.match(r"^/api/file/([a-f0-9]{16})$", p)
         if m:
-            return self.serve_export(m.group(1))
+            return self.serve_file(m.group(1), attach="dl" in q)
 
         return self.serve_static(p)
 
@@ -172,18 +185,22 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_bytes(fh.read(),
                                    CTYPES.get(ext, "application/octet-stream"), cache)
 
-    def serve_export(self, jid):
-        d = os.path.join(EXPORT_DIR, jid)
-        if not os.path.isdir(d):
-            return self.fail(404, "That export has expired.")
-        names = os.listdir(d)
-        if not names:
-            return self.fail(404, "That export is empty.")
-        fp = os.path.join(d, names[0])
-        ext = os.path.splitext(fp)[1]
+    def serve_file(self, fid, attach=False):
+        """A stored file, by its permanent id.
+
+        Served inline by default so the link can simply be opened -- a GIF in
+        a browser tab is the whole point of having a link. `?dl=1` forces the
+        save dialog for the button that wants a download.
+        """
+        meta = store.file_meta(fid)
+        fp = store.file_path(fid)
+        if not meta or not fp:
+            return self.fail(404, "No file with that id.")
         with open(fp, "rb") as fh:
-            return self.send_bytes(fh.read(), CTYPES.get(ext, "application/octet-stream"),
-                                   code=200, filename=names[0])
+            return self.send_bytes(
+                fh.read(), meta.get("type") or "application/octet-stream",
+                cache="public, max-age=31536000, immutable", code=200,
+                filename=meta["name"] if attach else None)
 
     # -- POST / DELETE ----------------------------------------------------
     def do_DELETE(self):
@@ -195,6 +212,9 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r"^/api/project/([a-f0-9]{12})$", p)
         if m:
             return self.send_json({"ok": store.delete_project(m.group(1))})
+        m = re.match(r"^/api/file/([a-f0-9]{16})$", p)
+        if m:
+            return self.send_json({"ok": store.delete_file(m.group(1))})
         return self.fail(404, "Not found.")
 
     def do_POST(self):
@@ -217,6 +237,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.start_export()
         if p == "/api/project":
             return self.save_project()
+        if p == "/api/project/import":
+            return self.import_project()
         m = re.match(r"^/api/job/([a-f0-9]{12})/cancel$", p)
         if m:
             return self.send_json({"ok": jobs.cancel(m.group(1))})
@@ -456,13 +478,12 @@ class Handler(BaseHTTPRequestHandler):
                     body, ct, name = exporters.export_png(h, frame, mm, dpi,
                                                           bool(req.get("raw")))
             jobs.set_progress(job, 0.9, "writing")
-            d = os.path.join(EXPORT_DIR, job.id)
-            os.makedirs(d, exist_ok=True)
-            with open(os.path.join(d, name), "wb") as fh:
-                fh.write(body)
-            _prune_exports()
-            return {"url": "/api/download/" + job.id, "name": name,
-                    "bytes": len(body), "type": ct, "overflow": overflow}
+            # Keyed on the bytes, not on this job: the link outlives the job,
+            # and exporting the same artwork twice hands back the same link.
+            doc = store.put_file(name, body, ct, {
+                "kind": kind, "hash": req.get("hash") or "",
+                "project": (req.get("name") or "")[:60]})
+            return dict(doc, url="/api/file/" + doc["id"], overflow=overflow)
 
         job = jobs.submit("export", work, kind)
         return self.send_json({"job": job.id})
@@ -471,27 +492,34 @@ class Handler(BaseHTTPRequestHandler):
         req, err = self.json_body()
         if err:
             return self.fail(400, err)
-        pid = req.get("id") or store.new_id()
-        if not ID_RE.match(pid):
-            pid = store.new_id()
-        stack = req.get("layers")
-        if not isinstance(stack, list) or not stack:
-            stack = [{"name": "Base", "chain": req.get("chain") or []}]
-        stack = [dict(layermod.coerce_layer(ly),
-                      name=str((ly or {}).get("name") or "Layer")[:40],
-                      off=bool((ly or {}).get("off")),
-                      solo=bool((ly or {}).get("solo")),
-                      chain=(ly or {}).get("chain") or [])
-                 for ly in stack[:layermod.MAX_LAYERS]]
-        doc = {"id": pid, "name": (req.get("name") or "untitled")[:80],
-               "layers": stack,
-               # `chain` stays in the document as the bottom layer's chain, so a
-               # project saved by the studio can still be read by anything that
-               # only knows about v2.0's single chain.
-               "chain": stack[0]["chain"],
-               "tray": req.get("tray") or [],
-               "sticker": req.get("sticker") or {}, "version": VERSION}
-        return self.send_json(store.save_project(pid, doc))
+        doc = coerce_project(req, req.get("id"))
+        return self.send_json(store.save_project(doc["id"], doc))
+
+    def import_project(self):
+        """Take a .glitchsheet.json back in.
+
+        The file is a project document, but it arrived from a disk rather than
+        from the studio, so it gets the same coercion as a save and a NEW id:
+        importing must never overwrite whatever happens to be sitting under the
+        id baked into the file.
+        """
+        req, err = self.json_body()
+        if err:
+            return self.fail(400, err)
+        if not isinstance(req, dict) or not (
+                req.get("layers") or req.get("chain")):
+            return self.fail(400, "That file is not a Glitchsheet project.")
+        doc = coerce_project(req, None)
+        return self.send_json(store.save_project(doc["id"], doc))
+
+    def serve_project_file(self, pid):
+        doc = store.load_project(pid)
+        if not doc:
+            return self.fail(404, "No project with that id.")
+        name = store.safe_name(doc.get("name") or "project", "project")
+        return self.send_bytes(
+            json.dumps(doc, indent=2).encode(), "application/json",
+            code=200, filename=name + ".glitchsheet.json")
 
 
 # ---------------------------------------------------------------------------
@@ -567,20 +595,36 @@ def fetch_url(url, dest_dir):
     return path, None
 
 
-def _prune_exports(keep=40):
-    try:
-        entries = [(os.path.getmtime(os.path.join(EXPORT_DIR, e)), e)
-                   for e in os.listdir(EXPORT_DIR)]
-    except FileNotFoundError:
-        return
-    entries.sort(reverse=True)
-    for _, e in entries[keep:]:
-        shutil.rmtree(os.path.join(EXPORT_DIR, e), ignore_errors=True)
+def coerce_project(req, pid=None):
+    """Validate an incoming project document, wherever it came from.
+
+    Shared by /api/project and /api/project/import, so a file loaded off a
+    disk cannot carry anything a save could not -- an imported document is
+    untrusted input, and it reaches the same evaluator either way.
+    """
+    if not ID_RE.match(pid or ""):
+        pid = store.new_id()
+    stack = req.get("layers")
+    if not isinstance(stack, list) or not stack:
+        stack = [{"name": "Base", "chain": req.get("chain") or []}]
+    stack = [dict(layermod.coerce_layer(ly),
+                  name=str((ly or {}).get("name") or "Layer")[:40],
+                  off=bool((ly or {}).get("off")),
+                  solo=bool((ly or {}).get("solo")),
+                  chain=(ly or {}).get("chain") or [])
+             for ly in stack[:layermod.MAX_LAYERS]]
+    return {"id": pid, "name": (req.get("name") or "untitled")[:80],
+            "layers": stack,
+            # `chain` stays in the document as the bottom layer's chain, so a
+            # project saved by the studio can still be read by anything that
+            # only knows about v2.0's single chain.
+            "chain": stack[0]["chain"],
+            "tray": req.get("tray") or [],
+            "sticker": req.get("sticker") or {}, "version": VERSION}
 
 
 def main():
     store.init()
-    os.makedirs(EXPORT_DIR, exist_ok=True)
     ops.load_all()
     jobs.start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

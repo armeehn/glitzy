@@ -29,6 +29,7 @@ export function initTray(ensureFull) {
   on($('#ex-gif'), 'click', () => runExport({ kind: 'gif' }, ensureFull));
   on($('#ex-apng'), 'click', () => runExport({ kind: 'apng' }, ensureFull));
   on($('#ex-sheet'), 'click', () => exportSheet());
+  on($('#ex-open'), 'click', () => openInCutsheet());
 }
 
 export async function keep(ensureFull) {
@@ -58,7 +59,10 @@ export function renderTray() {
       }, '×')));
   }
   $('#traycount').textContent = String(S.proj.tray.length);
-  $('#ex-sheet').disabled = !S.proj.tray.length;
+  const empty = !S.proj.tray.length;
+  $('#ex-sheet').disabled = empty;
+  const openBtn = $('#ex-open');
+  if (openBtn) openBtn.disabled = empty;
   $('#trayhint').textContent = S.proj.tray.length
     ? 'Each of these becomes a sticker on the cut sheet.'
     : 'Kept results land here. Each becomes a sticker on the sheet.';
@@ -97,8 +101,11 @@ async function runExport(opts, ensureFull) {
       mm: S.sticker.mm, dpi: S.sticker.dpi,
     });
     const done = await pollJob(job, (j) => setBusy(true, j.note || 'exporting', j.progress));
-    download(done.result.url, done.result.name);
-    toast(`${done.result.name} — ${(done.result.bytes / 1024).toFixed(0)} kB`);
+    // `?dl=1` for the save dialog; the bare URL stays openable, which is what
+    // makes it worth keeping. Both address the same permanent file.
+    download(done.result.url + '?dl=1', done.result.name);
+    toast(`${done.result.name} — ${(done.result.bytes / 1024).toFixed(0)} kB`
+      + ' · kept in Files');
   } catch (e) {
     toast(e.message, true);
   } finally {
@@ -106,22 +113,74 @@ async function runExport(opts, ensureFull) {
   }
 }
 
+/** Pack the tray into a cutsheet/1 sheet and return the stored file. */
+async function buildSheet() {
+  const { job } = await jpost('/api/export', {
+    kind: 'sheet', items: S.proj.tray, machine: S.sticker.machine,
+    dpi: S.sticker.dpi, name: S.proj.name,
+  });
+  const done = await pollJob(job, (j) => setBusy(true, j.note || 'packing', j.progress));
+  return done.result;
+}
+
+function overflowNote(over) {
+  return over
+    ? `Sheet built, but ${over} did not fit on one page — they were left off.`
+    : `Sheet with ${S.proj.tray.length} sticker${S.proj.tray.length > 1 ? 's' : ''}` +
+      ' — open it in Cutsheet.';
+}
+
 async function exportSheet() {
   if (!S.proj.tray.length) return;
   try {
     setBusy(true, 'packing sheet', 0);
-    const { job } = await jpost('/api/export', {
-      kind: 'sheet', items: S.proj.tray, machine: S.sticker.machine,
-      dpi: S.sticker.dpi, name: S.proj.name,
-    });
-    const done = await pollJob(job, (j) => setBusy(true, j.note || 'packing', j.progress));
-    download(done.result.url, done.result.name);
-    const over = done.result.overflow;
-    toast(over
-      ? `Sheet built, but ${over} did not fit on one page — they were left off.`
-      : `Sheet with ${S.proj.tray.length} sticker${S.proj.tray.length > 1 ? 's' : ''}` +
-        ' — open it in Cutsheet.', !!over);
+    const res = await buildSheet();
+    download(res.url, res.name);
+    toast(overflowNote(res.overflow), !!res.overflow);
   } catch (e) {
+    toast(e.message, true);
+  } finally {
+    setBusy(false);
+  }
+}
+
+/* Hand the sheet to Cutsheet.
+ *
+ * Two things here are load-bearing and look like they could be simplified:
+ *
+ *   The tab is opened FIRST, empty-handed, while we are still inside the click
+ *   event. window.open() after an await is not a user gesture any more and the
+ *   popup blocker silently drops it -- silently, because the return value is
+ *   null exactly as it is when the user has blocked popups on purpose.
+ *
+ *   `noopener` is deliberately NOT set. We need the handle to steer that tab to
+ *   the finished sheet, and the page it holds is our own origin, so opener
+ *   access is ours either way. The interstitial is what actually crosses to
+ *   Cutsheet, and it navigates itself.
+ */
+async function openInCutsheet() {
+  if (!S.proj.tray.length) return;
+  const win = window.open('/leaving.html', '_blank');
+  if (!win) {
+    toast('Your browser blocked the new tab. Allow popups for Glitchsheet, or '
+      + 'use Build .cutsheet.json and open it in Cutsheet by hand.', true);
+    return;
+  }
+  try {
+    setBusy(true, 'packing sheet', 0);
+    const res = await buildSheet();
+    const qs = new URLSearchParams({
+      id: res.id, name: res.name, n: String(S.proj.tray.length),
+      bytes: String(res.bytes || 0),
+    });
+    if (!win.closed) win.location.replace('/leaving.html?' + qs);
+    toast(overflowNote(res.overflow), !!res.overflow);
+  } catch (e) {
+    // The tab is already open and saying "packing"; leaving it there for ever
+    // is worse than telling it what went wrong.
+    if (!win.closed) {
+      win.location.replace('/leaving.html?err=' + encodeURIComponent(e.message));
+    }
     toast(e.message, true);
   } finally {
     setBusy(false);
@@ -132,5 +191,8 @@ export function setExportEnabled(on) {
   for (const id of ['#ex-png', '#ex-seq', '#ex-gif', '#ex-apng', '#keep']) {
     $(id).disabled = !on;
   }
-  $('#ex-sheet').disabled = !S.proj.tray.length;
+  const empty = !S.proj.tray.length;
+  $('#ex-sheet').disabled = empty;
+  const openBtn = $('#ex-open');
+  if (openBtn) openBtn.disabled = empty;
 }

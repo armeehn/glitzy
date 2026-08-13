@@ -36,6 +36,28 @@ export const upload = (file) =>
     body: file,
   }).then(parse);
 
+/* ------------------------------------------------------------------ files -- */
+/* Every export keeps its URL, so these are permanent addresses rather than
+   handles that expire when the job or the process does. */
+
+export const listFiles = () => jget('/api/files');
+export const deleteFile = (id) => jdel('/api/file/' + id);
+
+/** The absolute form, for putting on a clipboard or into someone else's hands. */
+export const fileLink = (id) => location.origin + '/api/file/' + id;
+
+/** Read a .glitchsheet.json off a disk and let the server validate it. */
+export const importProject = (file) =>
+  file.text().then((t) => {
+    let doc;
+    try {
+      doc = JSON.parse(t);
+    } catch {
+      throw new Error('That file is not JSON.');
+    }
+    return jpost('/api/project/import', doc);
+  });
+
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**

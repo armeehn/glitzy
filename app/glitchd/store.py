@@ -20,18 +20,20 @@ DATA_DIR = os.environ.get("GLITCHSHEET_DATA", "/var/lib/glitchsheet")
 CACHE_DIR = os.path.join(DATA_DIR, "cache")
 SRC_DIR = os.path.join(DATA_DIR, "sources")
 PROJ_DIR = os.path.join(DATA_DIR, "projects")
+FILES_DIR = os.path.join(DATA_DIR, "files")
 
 # The rootfs is 20 GB and the cache is pure scratch -- every entry can be
 # recomputed from the project graph. Keep it well clear of the disk.
 CACHE_BUDGET = 6 * 1024 * 1024 * 1024
 ID_RE = re.compile(r"^[a-f0-9]{12}$")
 HASH_RE = re.compile(r"^[a-f0-9]{40}$")
+FILE_RE = re.compile(r"^[a-f0-9]{16}$")
 
 _lock = threading.Lock()
 
 
 def init():
-    for d in (CACHE_DIR, SRC_DIR, PROJ_DIR):
+    for d in (CACHE_DIR, SRC_DIR, PROJ_DIR, FILES_DIR):
         os.makedirs(d, exist_ok=True)
 
 
@@ -288,3 +290,109 @@ def delete_project(pid):
         return True
     except OSError:
         return False
+
+
+# ---------------------------------------------------------------------------
+# Files
+# ---------------------------------------------------------------------------
+# Everything you export lands here and KEEPS ITS URL. Exports used to be
+# written under the export job's id and pruned to the newest 40, so a link was
+# only good until forty more exports pushed it out and it started answering
+# "That export has expired" -- fine for a browser download that is consumed
+# immediately, useless for a link you saved or sent to someone.
+#
+# The id is the sha1 of the bytes, so re-exporting the same artwork with the
+# same settings returns the SAME link instead of a second copy. Nothing here
+# is evicted automatically: a link that silently stops working is the bug this
+# replaces, so growth is surfaced through files_stats() and removed on request.
+
+def safe_name(name, fallback="file"):
+    name = os.path.basename(name or "")[:80]
+    name = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-.") or fallback
+    return name
+
+
+def put_file(name, body, ctype="application/octet-stream", meta=None):
+    """Store bytes permanently and return their metadata, id included."""
+    fid = hashlib.sha1(body).hexdigest()[:16]
+    d = os.path.join(FILES_DIR, fid)
+    name = safe_name(name)
+    doc = dict(meta or {}, id=fid, name=name, bytes=len(body), type=ctype,
+               at=time.time())
+    with _lock:
+        existing = file_meta(fid)
+        if existing:
+            # Same bytes, same link. Keep the original timestamp so the list
+            # stays in the order things were actually first made.
+            return existing
+        os.makedirs(d, exist_ok=True)
+        tmp = os.path.join(d, "." + new_id())
+        with open(tmp, "wb") as fh:
+            fh.write(body)
+        os.replace(tmp, os.path.join(d, name))
+        with open(os.path.join(d, "meta.json"), "w") as fh:
+            json.dump(doc, fh)
+    return doc
+
+
+def file_meta(fid):
+    if not FILE_RE.match(fid or ""):
+        return None
+    try:
+        with open(os.path.join(FILES_DIR, fid, "meta.json")) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return None
+
+
+def file_path(fid):
+    """The stored payload, or None. Read through meta so a half-written entry
+    (no meta.json yet) is never served as if it were complete."""
+    m = file_meta(fid)
+    if not m:
+        return None
+    p = os.path.join(FILES_DIR, fid, m["name"])
+    return p if os.path.isfile(p) else None
+
+
+def list_files(limit=200):
+    out = []
+    try:
+        names = os.listdir(FILES_DIR)
+    except FileNotFoundError:
+        return out
+    for fid in names:
+        m = file_meta(fid)
+        if m:
+            out.append(m)
+    out.sort(key=lambda m: m.get("at", 0), reverse=True)
+    return out[:limit]
+
+
+def delete_file(fid):
+    if not FILE_RE.match(fid or ""):
+        return False
+    d = os.path.join(FILES_DIR, fid)
+    if not os.path.isdir(d):
+        return False
+    shutil.rmtree(d, ignore_errors=True)
+    return True
+
+
+def files_stats():
+    total, count = 0, 0
+    try:
+        for fid in os.listdir(FILES_DIR):
+            p = os.path.join(FILES_DIR, fid)
+            if not os.path.isdir(p):
+                continue
+            count += 1
+            for root, _, files in os.walk(p):
+                for f in files:
+                    try:
+                        total += os.path.getsize(os.path.join(root, f))
+                    except OSError:
+                        pass
+    except FileNotFoundError:
+        pass
+    return {"files": count, "bytes": total}

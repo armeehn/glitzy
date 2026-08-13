@@ -558,6 +558,138 @@ try {
   check('the panel switcher opens a rail',
     await page.locator('#rail-left').isVisible());
 
+  // ------------------------------------------------- reaching the exports --
+  // The export buttons existed for a long time before anyone could get to
+  // them: at 1366x768 #ex-gif sat at y=788, and the one gesture that should
+  // have brought it up -- a wheel over the variants grid -- was swallowed by
+  // that grid's own max-height scroller. "Is it in the DOM" is exactly the
+  // check that passed throughout, so these measure reach, not presence.
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.waitForTimeout(400);
+
+  const nested = await page.evaluate(() =>
+    [...document.querySelectorAll('#rail-right *')]
+      .filter((e) => e.scrollHeight > e.clientHeight + 2
+        && getComputedStyle(e).overflowY === 'auto')
+      .map((e) => e.id || e.className));
+  check('the right rail has no nested scroller to eat the wheel',
+    nested.length === 0, JSON.stringify(nested));
+
+  const rail = page.locator('#rail-right');
+  // Put the grid on screen wherever the rail happens to be sitting -- how far
+  // down it starts depends on how tall the selected node's inspector is, and
+  // wheeling at a coordinate the grid does not occupy tests nothing. Then back
+  // off a little so there is definitely somewhere left to scroll to.
+  await page.locator('#vgrid').scrollIntoViewIfNeeded();
+  await rail.evaluate((r) => { r.scrollTop = Math.max(0, r.scrollTop - 120); });
+  await page.waitForTimeout(200);
+  const room = await rail.evaluate((r) => r.scrollHeight - r.clientHeight - r.scrollTop);
+  const gbox = await page.locator('#vgrid').boundingBox();
+  const onScreen = gbox && gbox.y < 768 && gbox.y + gbox.height > 0;
+  let railMoved = 0;
+  if (onScreen && room > 40) {
+    const y = Math.min(760, Math.max(gbox.y + 8, gbox.y + Math.min(30, gbox.height / 2)));
+    const from = await rail.evaluate((r) => r.scrollTop);
+    await page.mouse.move(gbox.x + gbox.width / 2, y);
+    await page.mouse.wheel(0, 300);
+    await page.waitForTimeout(350);
+    railMoved = (await rail.evaluate((r) => r.scrollTop)) - from;
+  }
+  check('one wheel gesture over the variants grid scrolls the rail',
+    onScreen && room > 40 && railMoved > 0,
+    `onScreen=${onScreen} room=${room} moved=${railMoved}`);
+
+  const folds = await page.locator('details.panel[data-fold]').count();
+  check('the rail panels fold', folds === 4, folds);
+  await page.evaluate(() => {
+    for (const k of ['variants', 'inspector']) {
+      document.querySelector(`details.panel[data-fold=${k}]`).open = false;
+    }
+  });
+  await page.waitForTimeout(250);
+  await rail.evaluate((r) => { r.scrollTop = 0; });
+  const gifBox = await page.locator('#ex-gif').boundingBox();
+  check('folding two panels brings GIF into view without scrolling',
+    gifBox && gifBox.y >= 0 && gifBox.y + gifBox.height <= 768,
+    gifBox && Math.round(gifBox.y));
+  check('the fold state is remembered',
+    /"variants":false/.test(await page.evaluate(() => localStorage.getItem('gs.folds'))));
+  await page.evaluate(() => {
+    for (const d of document.querySelectorAll('details.panel[data-fold]')) d.open = true;
+  });
+
+  // ------------------------------------------------------- files and links --
+  // Nothing evicts stored files any more -- that is the point of them -- so a
+  // suite that exports on every run would grow the user's Files list forever.
+  // Note what was there before and take back exactly what this run added.
+  const filesBefore = new Set((await (await page.request.get(BASE + '/api/files')).json())
+    .files.map((f) => f.id));
+
+  const gifDl = page.waitForEvent('download', { timeout: 180000 }).catch(() => null);
+  await page.locator('#ex-gif').click();
+  check('the GIF export downloads', !!(await gifDl));
+  await page.waitForTimeout(500);
+
+  await page.locator('#files').click();
+  await page.waitForSelector('#filesdlg[open]', { timeout: 5000 });
+  check('the export is listed in Files',
+    (await page.locator('#filelist .frow').count()) >= 1);
+  // Pick the GIF row by name rather than taking the first: the store is
+  // addressed by content, so re-exporting bytes that already exist returns the
+  // original entry and keeps its original place in the list. The newest row is
+  // whatever was made first, not whatever was exported last.
+  const gifRow = page.locator('#filelist .frow', { hasText: '.gif' }).first();
+  const link = await gifRow.locator('.flink').textContent();
+  check('a file row carries an absolute permanent link',
+    /^https?:\/\/.+\/api\/file\/[a-f0-9]{16}$/.test(link || ''), link);
+  const linkResp = await page.request.get(link);
+  check('the link resolves on its own', linkResp.status() === 200, linkResp.status());
+  check('and is served as the type it is',
+    (linkResp.headers()['content-type'] || '').includes('gif'),
+    linkResp.headers()['content-type']);
+  await page.locator('#closefiles').click();
+
+  // ------------------------------------------------------- project as file --
+  await page.fill('#projname', 'portable');
+  await page.locator('#open').click();
+  await page.waitForSelector('#opendlg[open]', { timeout: 5000 });
+  const projDl = page.waitForEvent('download', { timeout: 60000 }).catch(() => null);
+  await page.locator('#savefile').click();
+  const projFile = await projDl;
+  const projName = projFile ? await projFile.suggestedFilename() : '';
+  check('the project saves as a .glitchsheet.json',
+    /\.glitchsheet\.json$/.test(projName), projName);
+  const projPath = '/tmp/uitest-' + (projName || 'x.json');
+  if (projFile) await projFile.saveAs(projPath);
+  await page.locator('#closeopen').click();
+  await page.waitForTimeout(200);
+  const nodesWas = await page.locator('#chain .node').count();
+
+  await page.locator('#newproj').click();
+  await page.waitForTimeout(400);
+  check('New empties the chain', (await page.locator('#chain .node').count()) === 0);
+
+  await page.locator('#open').click();
+  await page.waitForSelector('#opendlg[open]', { timeout: 5000 });
+  await page.locator('#projfile').setInputFiles(projPath);
+  await page.waitForTimeout(2500);
+  check('loading the file restores the chain',
+    (await page.locator('#chain .node').count()) === nodesWas,
+    `${await page.locator('#chain .node').count()} vs ${nodesWas}`);
+  check('loading the file restores the name',
+    (await page.inputValue('#projname')) === 'portable');
+
+  // Hand back everything this run made, files and projects both.
+  const madeFiles = (await (await page.request.get(BASE + '/api/files')).json())
+    .files.map((f) => f.id).filter((id) => !filesBefore.has(id));
+  for (const id of madeFiles) await page.request.delete(BASE + '/api/file/' + id);
+  const leftOver = (await (await page.request.get(BASE + '/api/files')).json())
+    .files.filter((f) => !filesBefore.has(f.id)).length;
+  check('the suite leaves no files behind', leftOver === 0, leftOver);
+  for (const p of (await (await page.request.get(BASE + '/api/projects')).json()).projects) {
+    if (p.name === 'portable') await page.request.delete(BASE + '/api/project/' + p.id);
+  }
+
   await page.setViewportSize({ width: 1600, height: 950 });
   await page.waitForTimeout(300);
   await page.screenshot({ path: '/tmp/glitchsheet-v2.png' });

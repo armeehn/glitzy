@@ -8,7 +8,9 @@
  */
 
 import { $, bytes, debounce, el, on, toast } from './dom.js';
-import { jdel, jget, jpost, pollJob } from './api.js';
+import {
+  deleteFile, fileLink, importProject, jdel, jget, jpost, listFiles, pollJob,
+} from './api.js';
 import { S, fire, makeProj, on as bus, setChain } from './state.js';
 import { initLibrary, renderLibrary } from './library.js';
 import { initChain, renderChain } from './chain.js';
@@ -138,6 +140,135 @@ async function saveProject() {
   }
 }
 
+/** Hand the whole project over as a file the browser saves. */
+async function saveProjectFile() {
+  // Save first: the file has to be the project as the server understands it,
+  // not as this tab happens to hold it, or a stale id or an uncoerced layer
+  // rides along into a document meant to outlive the session.
+  await saveProject();
+  if (!S.proj.id) return;
+  const a = el('a', { href: '/api/project/' + S.proj.id + '/file', download: '' });
+  document.body.append(a);
+  a.click();
+  a.remove();
+}
+
+async function loadProjectFile(file) {
+  if (!file) return;
+  try {
+    const doc = await importProject(file);
+    applyProject(doc);
+    $('#opendlg').close();
+    toast(`Loaded “${doc.name}”.`);
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+/** Everything needed to make a loaded document the live project. */
+function applyProject(doc) {
+  S.active = 0;
+  S.hashes = {};
+  S.hashCache = {};
+  S.layerOut = {};
+  S.proj = makeProj(doc);
+  if (doc.sticker) Object.assign(S.sticker, doc.sticker);
+  $('#projname').value = doc.name;
+  $('#mm').value = S.sticker.mm;
+  $('#mmv').textContent = S.sticker.mm + ' mm';
+  setChain(S.proj.chain);
+  renderTray();
+}
+
+/* ---------------------------------------------------------------- folds -- */
+
+/** Collapsible rail panels, remembered across reloads.
+ *
+ *  Panels default to OPEN so nothing is hidden from someone who has never
+ *  touched them -- the fold is there to get an unwanted panel out of the way,
+ *  not to hide the app. A button living inside a <summary> (Tray's "clear")
+ *  would otherwise toggle the panel as well as firing, so summary clicks that
+ *  landed on a control are stopped before the toggle.
+ */
+function initFolds() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('gs.folds') || '{}'); } catch { saved = {}; }
+  for (const d of document.querySelectorAll('details.panel[data-fold]')) {
+    const key = d.dataset.fold;
+    if (key in saved) d.open = !!saved[key];
+    on(d, 'toggle', () => {
+      saved[key] = d.open;
+      try { localStorage.setItem('gs.folds', JSON.stringify(saved)); } catch { /* private mode */ }
+    });
+    const sum = d.querySelector(':scope > summary');
+    on(sum, 'click', (e) => {
+      if (e.target.closest('button, a, input, select')) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+  }
+}
+
+/* ---------------------------------------------------------------- files -- */
+
+/** navigator.clipboard is undefined on a plain-http origin, and the studio is
+ *  reachable over one on the LAN. Fall back rather than throw. */
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = el('textarea', { style: 'position:fixed;opacity:0' });
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch { ok = false; }
+    ta.remove();
+    return ok;
+  }
+}
+
+async function filesDialog() {
+  const dlg = $('#filesdlg');
+  const list = $('#filelist');
+  list.textContent = '';
+  try {
+    const { files, stats } = await listFiles();
+    $('#filesstat').textContent =
+      `${stats.files} file${stats.files === 1 ? '' : 's'} · ${bytes(stats.bytes)}`;
+    if (!files.length) {
+      list.append(el('p', { class: 'hint' }, 'Nothing exported yet.'));
+    }
+    for (const f of files) {
+      const link = fileLink(f.id);
+      list.append(el('div', { class: 'frow' },
+        el('a', { href: '/api/file/' + f.id, target: '_blank', rel: 'noopener',
+                  class: 'fname', title: 'Open ' + f.name }, f.name),
+        el('span', { class: 'fmeta' },
+          `${(f.kind || '').toUpperCase()} · ${bytes(f.bytes)}`),
+        el('span', { class: 'spacer' }, ''),
+        el('code', { class: 'flink', title: link }, link),
+        el('button', {
+          class: 'act',
+          onclick: async (e) => {
+            const ok = await copyText(link);
+            e.target.textContent = ok ? 'copied' : 'select it';
+            setTimeout(() => { e.target.textContent = 'copy'; }, 1400);
+          },
+        }, 'copy'),
+        el('button', {
+          class: 'act',
+          onclick: async () => { await deleteFile(f.id); filesDialog(); },
+        }, 'delete')));
+    }
+    dlg.showModal();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
 async function openDialog() {
   const dlg = $('#opendlg');
   const list = $('#projlist');
@@ -148,18 +279,7 @@ async function openDialog() {
     for (const p of projects) {
       list.append(el('button', {
         onclick: async () => {
-          const doc = await jget('/api/project/' + p.id);
-          S.active = 0;
-          S.hashes = {};
-          S.hashCache = {};
-          S.layerOut = {};
-          S.proj = makeProj(doc);
-          if (doc.sticker) Object.assign(S.sticker, doc.sticker);
-          $('#projname').value = doc.name;
-          $('#mm').value = S.sticker.mm;
-          $('#mmv').textContent = S.sticker.mm + ' mm';
-          setChain(S.proj.chain);
-          renderTray();
+          applyProject(await jget('/api/project/' + p.id));
           dlg.close();
         },
       },
@@ -201,6 +321,15 @@ async function boot() {
   on($('#save'), 'click', saveProject);
   on($('#open'), 'click', openDialog);
   on($('#closeopen'), 'click', () => $('#opendlg').close());
+  initFolds();
+  on($('#files'), 'click', filesDialog);
+  on($('#closefiles'), 'click', () => $('#filesdlg').close());
+  on($('#savefile'), 'click', saveProjectFile);
+  on($('#loadfile'), 'click', () => $('#projfile').click());
+  on($('#projfile'), 'change', (e) => {
+    loadProjectFile(e.target.files[0]);
+    e.target.value = '';   // or picking the same file twice fires no change
+  });
   on($('#newproj'), 'click', () => {
     S.active = 0;
     S.hashes = {};
@@ -259,8 +388,30 @@ async function refreshHealth() {
     const h = await jget('/api/health');
     $('#s-engine').textContent = 'v' + h.version;
     $('#s-cache').textContent = `${h.cache.entries} · ${bytes(h.cache.bytes)}`;
+    showCutsheet(h.cutsheet);
   } catch {
     $('#s-engine').textContent = 'down';
+  }
+}
+
+/* Where Cutsheet lives is deployment config, not a constant in the page.
+ * The header link used to be hard-coded at a workers.dev host that was never
+ * deployed, so it read as a working link and went nowhere; anything the studio
+ * does not know about, it now hides instead of guessing. */
+function showCutsheet(url) {
+  const base = (url || '').replace(/\/+$/, '');
+  const link = $('#cutsheet-link');
+  const btn = $('#ex-open');
+  if (link) {
+    link.hidden = !base;
+    if (base) link.href = base + '/';
+  }
+  if (btn) btn.hidden = !base;
+  const hint = $('#sheethint');
+  if (hint && base) {
+    hint.innerHTML = '<b>Open in Cutsheet</b> hands the sheet straight over in a '
+      + 'new tab. The cut line follows the artwork\'s own alpha, so the '
+      + 'silhouette and its die-cut border come with it.';
   }
 }
 

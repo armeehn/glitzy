@@ -624,6 +624,64 @@ check("project node count is listed",
 store.delete_project(doc["id"])
 check("project deletes", store.load_project(doc["id"]) is None)
 
+# A project document is portable: it goes out to a file and comes back in.
+# coerce_project is what a save and an import share, so an imported file
+# cannot carry anything a save could not -- both end up in the evaluator.
+from glitchd.server import coerce_project  # noqa: E402
+
+exported = coerce_project({"name": "portable", "layers": [{"name": "Base",
+                                                           "chain": CHAIN}]})
+wire = json.loads(json.dumps(exported))            # what lands on the disk
+reimported = coerce_project(wire, None)
+check("a project file round-trips its chain",
+      reimported["layers"][0]["chain"] == CHAIN)
+check("a project file round-trips its name", reimported["name"] == "portable")
+check("importing mints a new id", reimported["id"] != exported["id"])
+check("an import with neither layers nor chain still yields one layer",
+      len(coerce_project({"name": "junk"})["layers"]) == 1)
+check("an import cannot smuggle in extra layers",
+      len(coerce_project({"layers": [{"chain": []}] * 99})["layers"])
+      <= layers.MAX_LAYERS)
+
+
+# ---------------------------------------------------------------------------
+section("files keep their address")
+# ---------------------------------------------------------------------------
+# Exports used to be written under the export JOB's id and pruned to the
+# newest 40, so a saved link answered "that export has expired" once forty
+# more exports had happened. These are addressed by their bytes and never
+# evicted, which is the only reason a link is worth keeping.
+f1 = store.put_file("out.gif", b"GIF89a-pretend", "image/gif", {"kind": "gif"})
+check("a stored file reports its id", store.FILE_RE.match(f1["id"] or ""), f1)
+check("a stored file records its type", f1["type"] == "image/gif", f1)
+check("a stored file records its size", f1["bytes"] == len(b"GIF89a-pretend"))
+check("the payload is on disk", open(store.file_path(f1["id"]), "rb").read()
+      == b"GIF89a-pretend")
+
+f2 = store.put_file("other-name.gif", b"GIF89a-pretend", "image/gif")
+check("the same bytes get the same address", f2["id"] == f1["id"], (f1, f2))
+check("and are not stored twice", store.files_stats()["files"] == 1,
+      store.files_stats())
+f3 = store.put_file("out.gif", b"GIF89a-different", "image/gif")
+check("different bytes get a different address", f3["id"] != f1["id"])
+
+check("files are listed newest first",
+      [f["id"] for f in store.list_files()][:2] == [f3["id"], f1["id"]],
+      [f["id"] for f in store.list_files()])
+check("stats count every file", store.files_stats()["files"] == 2,
+      store.files_stats())
+
+# Nothing prunes: the point is that an old link still resolves.
+for i in range(60):
+    store.put_file("bulk-%d.bin" % i, b"x" * (i + 1), "application/octet-stream")
+check("sixty more exports do not evict the first",
+      store.file_path(f1["id"]) is not None)
+check("a name from a hostile document cannot escape its directory",
+      "/" not in store.put_file("../../etc/passwd", b"nope")["name"])
+check("a file deletes on request", store.delete_file(f1["id"])
+      and store.file_path(f1["id"]) is None)
+check("deleting an unknown id is not an error", store.delete_file("0" * 16) is False)
+
 
 # ---------------------------------------------------------------------------
 section("cache housekeeping")

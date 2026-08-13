@@ -16,12 +16,15 @@
     <button class="btn sm" id="save">Save</button>
     <button class="btn sm" id="open">Open</button>
     <button class="btn sm" id="newproj">New</button>
+    <button class="btn sm" id="files">Files</button>
     <div class="spacer"></div>
     <span class="stat" title="Cached chain results">Cache <b id="s-cache">—</b></span>
     <span class="stat">Engine <b id="s-engine">…</b></span>
     <span class="chip dim" id="s-job">idle</span>
-    <a class="btn ghost sm" href="https://cutsheet.armeehn.workers.dev/" target="_blank"
-       rel="noopener">Cutsheet ↗</a>
+    <!-- href is filled in from the engine's config at boot; hidden until then,
+         because a hard-coded one pointed at a host that did not exist. -->
+    <a class="btn ghost sm" id="cutsheet-link" href="#" target="_blank"
+       rel="noopener" hidden>Cutsheet ↗</a>
     <button class="btn sm only-narrow" id="panes" aria-label="Switch panel">Panels</button>
   </header>
 
@@ -110,8 +113,9 @@ see is what Keep and the exports use, so a solo view keeps a single layer.">
     </section>
 
     <aside class="rail right" id="rail-right">
-      <section class="panel" id="inspector-panel">
-        <h2 class="ph">Inspector <span class="chip dim" id="s-node">nothing selected</span></h2>
+      <details class="panel" id="inspector-panel" data-fold="inspector" open>
+        <summary class="ph"><span class="fold">›</span>Inspector
+          <span class="chip dim" id="s-node">nothing selected</span></summary>
         <!-- The layer's compositing controls get their own host rather than
              living inside #inspector: everything that reads the inspector
              (and every test) means "the controls for the selected node" by
@@ -119,10 +123,10 @@ see is what Keep and the exports use, so a solo view keeps a single layer.">
              quietly changes what "the first control" refers to. -->
         <div class="pbody" id="layerbox"></div>
         <div class="pbody" id="inspector"></div>
-      </section>
+      </details>
 
-      <section class="panel">
-        <h2 class="ph">Variants</h2>
+      <details class="panel" data-fold="variants" open>
+        <summary class="ph"><span class="fold">›</span>Variants</summary>
         <div class="pbody">
           <label class="f"><span>Sweep</span>
             <select id="vparam"><option value="">select a node first</option></select></label>
@@ -135,19 +139,20 @@ see is what Keep and the exports use, so a solo view keeps a single layer.">
           <button class="btn primary wide" id="sweep" disabled>Sweep</button>
           <div class="vgrid" id="vgrid"></div>
         </div>
-      </section>
+      </details>
 
-      <section class="panel">
-        <h2 class="ph">Tray <span class="chip dim" id="traycount">0</span>
-          <button class="act" id="clearall">clear</button></h2>
+      <details class="panel" data-fold="tray" open>
+        <summary class="ph"><span class="fold">›</span>Tray
+          <span class="chip dim" id="traycount">0</span>
+          <button class="act" id="clearall">clear</button></summary>
         <div class="pbody">
           <div class="tray" id="tray"></div>
           <p class="hint" id="trayhint">Kept results land here. Each becomes a sticker on the sheet.</p>
         </div>
-      </section>
+      </details>
 
-      <section class="panel">
-        <h2 class="ph">Export</h2>
+      <details class="panel" data-fold="export" open>
+        <summary class="ph"><span class="fold">›</span>Export</summary>
         <div class="pbody">
           <div class="row">
             <label class="f"><span>Printed width <b id="mmv">76 mm</b></span>
@@ -172,20 +177,37 @@ see is what Keep and the exports use, so a solo view keeps a single layer.">
             <button class="btn" id="ex-gif" disabled>GIF</button>
             <button class="btn" id="ex-apng" disabled>APNG</button>
           </div>
-          <button class="btn primary wide" id="ex-sheet" disabled>Build .cutsheet.json</button>
-          <p class="hint">Open the sheet in Cutsheet with <b>Open project</b>. The cut
-             line follows the artwork's own alpha, so the silhouette and its die-cut
-             border come with it.</p>
+          <button class="btn primary wide" id="ex-open" disabled hidden>Open in Cutsheet ↗</button>
+          <button class="btn wide" id="ex-sheet" disabled>Build .cutsheet.json</button>
+          <p class="hint" id="sheethint">Open the sheet in Cutsheet with <b>Open project</b>.
+             The cut line follows the artwork's own alpha, so the silhouette and its
+             die-cut border come with it.</p>
         </div>
-      </section>
+      </details>
     </aside>
   </div>
 </div>
 
 <dialog id="opendlg">
-  <h3>Open a project</h3>
+  <h3>Projects</h3>
   <div id="projlist" class="projlist"></div>
-  <div class="row end"><button class="btn sm" id="closeopen">Close</button></div>
+  <p class="hint">A project file is portable — save one to keep your work outside
+     this server, or to move it to another machine.</p>
+  <div class="row end">
+    <button class="btn sm" id="savefile">Save to file…</button>
+    <button class="btn sm" id="loadfile">Load from file…</button>
+    <input type="file" id="projfile" accept=".json,application/json">
+    <span class="spacer"></span>
+    <button class="btn sm" id="closeopen">Close</button>
+  </div>
+</dialog>
+
+<dialog id="filesdlg">
+  <h3>Files <span class="chip dim" id="filesstat">—</span></h3>
+  <p class="hint">Everything you export is kept here and kept at the same
+     address. A link kept from a year ago still resolves to the same bytes.</p>
+  <div id="filelist" class="filelist"></div>
+  <div class="row end"><button class="btn sm" id="closefiles">Close</button></div>
 </dialog>
 
 <script type="module" src="/js/main.js"></script>
