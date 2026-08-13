@@ -15,6 +15,7 @@ import { initChain, renderChain } from './chain.js';
 import { renderInspector, reloadSources } from './inspector.js';
 import { initVariants, renderVariantPanel } from './variants.js';
 import { clearViewer, initViewer, setBusy, showResult } from './viewer.js';
+import { initZoom } from './zoom.js';
 import { initTray, keep, renderDpiNote, renderTray, setExportEnabled } from './tray.js';
 
 let gen = 0;
@@ -153,6 +154,7 @@ async function boot() {
   window.__gs = S;
 
   initViewer();
+  initZoom();
   initChain();
   initLibrary();
   initVariants();

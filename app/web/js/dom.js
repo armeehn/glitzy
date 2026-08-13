@@ -22,7 +22,7 @@ export function el(tag, attrs = {}, ...kids) {
   return n;
 }
 
-export const on = (node, ev, fn) => node && node.addEventListener(ev, fn);
+export const on = (node, ev, fn, opts) => node && node.addEventListener(ev, fn, opts);
 
 /** Coalesce bursts of calls (a slider drag fires one event per pixel). */
 export function debounce(fn, ms) {

@@ -65,6 +65,17 @@
                  aria-label="Frame">
           <span class="stat mono"><b id="s-frame">0</b>/<b id="s-frames">0</b></span>
           <span class="stat mono" id="s-size">—</span>
+          <div class="zoomctl">
+            <button class="btn sm" id="zout" aria-label="Zoom out"
+                    title="Zoom out — key: -   (wheel over the artwork)">−</button>
+            <span class="zlvl mono" id="s-zoom" title="Size on screen against the frame's own pixels">—</span>
+            <button class="btn sm" id="zin" aria-label="Zoom in"
+                    title="Zoom in — key: +   (wheel over the artwork)">+</button>
+            <button class="btn sm ghost" id="zfit"
+                    title="Fit the whole artwork in the viewer — key: 0">Fit</button>
+            <button class="btn sm ghost" id="z11"
+                    title="Natural pixel size — key: 1 (double-click toggles)">1:1</button>
+          </div>
           <div class="spacer"></div>
           <label class="inline"><input type="checkbox" id="fastpreview" checked>
             <span>Fast preview</span></label>

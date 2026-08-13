@@ -10,6 +10,7 @@
 import { $, el, fmt, on } from './dom.js';
 import { frameUrl } from './api.js';
 import { S, fire } from './state.js';
+import { resetZoom, syncZoom } from './zoom.js';
 
 let timer = 0;
 
@@ -61,6 +62,10 @@ export function showResult(hash, meta, notes = []) {
   $('#empty').hidden = !!hash;
   $('#view').hidden = !hash;
   showFrame(hash);
+  // The zoom is deliberately kept across edits -- that is the point of it in a
+  // studio -- but a new result can change the aspect, so the pan limits and
+  // the magnification readout have to be recomputed against the new size.
+  syncZoom();
   renderOsd(meta, notes);
 }
 
@@ -92,6 +97,7 @@ export function clearViewer() {
   $('#play').textContent = '▶';
   $('#view').hidden = true;
   $('#empty').hidden = false;
+  resetZoom();
   $('#osd').textContent = '';
   $('#s-frames').textContent = '0';
   $('#s-size').textContent = '—';

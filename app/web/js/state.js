@@ -20,6 +20,7 @@ export const S = {
 
   frame: 0,
   playing: false,
+  zoom: 1,          // viewer zoom, as a multiple of "fits the stage"
   fast: true,       // shrink the source while scrubbing params
   busy: false,
   dirty: false,     // chain differs from what is on screen

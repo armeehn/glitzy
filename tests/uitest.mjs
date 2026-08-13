@@ -214,6 +214,210 @@ try {
   const chainH = await page.locator('#chain').evaluate((e) => e.getBoundingClientRect().height);
   check('the chain strip has a fixed height', Math.abs(chainH - 104) < 2, chainH);
 
+  // ---------------------------------------------------------------- zoom ---
+  // The stage fits the artwork to a fixed box, which means it is always shown
+  // at whatever size that box happens to be. Without a zoom there is no way to
+  // pull back from it, which is what "i can't zoom out" meant.
+  const artBox = () => page.locator('#view').boundingBox();
+  const zoomPct = () => page.textContent('#s-zoom');
+  // The artwork is contain-fitted inside an img box that fills the stage, so
+  // the img's own rect is not the artwork's. Recover the drawn rect the same
+  // way object-fit does, or a non-square design makes the geometry checks lie.
+  const contentBox = () => page.locator('#view').evaluate((i) => {
+    const r = i.getBoundingClientRect();
+    const ar = i.naturalWidth / i.naturalHeight;
+    const w = Math.min(r.width, r.height * ar), h = w / ar;
+    return { x: r.x + (r.width - w) / 2, y: r.y + (r.height - h) / 2, w, h };
+  });
+
+  // The image box must be the stage box. It was not: the stage was a grid with
+  // an auto-sized row, height:100% on the image resolved to `auto`, and a
+  // square design rendered taller than the stage with its bottom third clipped
+  // away -- which is what "i can't zoom out" actually meant.
+  const stageAtFit = await page.locator('#stage').boundingBox();
+  const imgBox = await page.locator('#view').evaluate(
+    (i) => [i.offsetWidth, i.offsetHeight]);
+  check('the image box fills the stage exactly',
+    Math.abs(imgBox[0] - stageAtFit.width) < 2 && Math.abs(imgBox[1] - stageAtFit.height) < 2,
+    `img ${imgBox.join('x')} vs stage ${Math.round(stageAtFit.width)}x${Math.round(stageAtFit.height)}`);
+
+  const shown = await contentBox();
+  check('the whole artwork is visible at fit',
+    shown.x >= stageAtFit.x - 1 && shown.y >= stageAtFit.y - 1
+    && shown.x + shown.w <= stageAtFit.x + stageAtFit.width + 1
+    && shown.y + shown.h <= stageAtFit.y + stageAtFit.height + 1,
+    `art ${Math.round(shown.x)},${Math.round(shown.y)} ${Math.round(shown.w)}x${Math.round(shown.h)}` +
+    ` vs stage ${Math.round(stageAtFit.x)},${Math.round(stageAtFit.y)} ` +
+    `${Math.round(stageAtFit.width)}x${Math.round(stageAtFit.height)}`);
+
+  check('zoom controls are present',
+    await page.locator('#zout').isVisible() && await page.locator('#zin').isVisible()
+    && await page.locator('#zfit').isVisible() && await page.locator('#z11').isVisible());
+  check('the viewer opens at fit',
+    await page.locator('#zfit').getAttribute('data-on') === 'true');
+  check('the zoom readout shows a percentage', /^\d+%$/.test(await zoomPct()),
+    await zoomPct());
+
+  const fitBox = await artBox();
+  const stagePreZoom = await page.locator('#stage').boundingBox();
+
+  await page.locator('#zout').click();
+  await page.waitForTimeout(120);
+  const outBox = await artBox();
+  check('zoom out shrinks the artwork on screen', outBox.width < fitBox.width - 4,
+    `${fitBox.width} -> ${outBox.width}`);
+
+  // The whole reason zoom is a transform: the box it lives in must not resize,
+  // or the artwork would shift on screen exactly as it did before the rewrite.
+  const stagePostZoom = await page.locator('#stage').boundingBox();
+  check('zooming does not move or resize the stage',
+    Math.abs(stagePreZoom.x - stagePostZoom.x) < 1 &&
+    Math.abs(stagePreZoom.y - stagePostZoom.y) < 1 &&
+    Math.abs(stagePreZoom.width - stagePostZoom.width) < 1,
+    `${JSON.stringify(stagePreZoom)} -> ${JSON.stringify(stagePostZoom)}`);
+
+  await page.locator('#zout').click();
+  await page.waitForTimeout(120);
+  const outBox2 = await artBox();
+  check('zoom out keeps going', outBox2.width < outBox.width - 4,
+    `${outBox.width} -> ${outBox2.width}`);
+  check('zoomed out artwork stays inside the stage',
+    outBox2.width <= stagePostZoom.width + 1);
+
+  await page.locator('#zin').click();
+  await page.waitForTimeout(120);
+  check('zoom in grows it again', (await artBox()).width > outBox2.width + 4);
+
+  await page.locator('#zfit').click();
+  await page.waitForTimeout(120);
+  const backBox = await artBox();
+  check('fit restores the original size', Math.abs(backBox.width - fitBox.width) < 2,
+    `${fitBox.width} vs ${backBox.width}`);
+  check('fit marks itself active',
+    await page.locator('#zfit').getAttribute('data-on') === 'true');
+
+  await page.locator('#z11').click();
+  await page.waitForTimeout(120);
+  check('1:1 reads 100%', (await zoomPct()) === '100%', await zoomPct());
+  const oneToOne = await page.locator('#view').evaluate((i) => {
+    const r = i.getBoundingClientRect();
+    // The artwork is contain-fitted inside the img box, so recover its width.
+    const ar = i.naturalWidth / i.naturalHeight;
+    return Math.min(r.width, r.height * ar);
+  });
+  const natW = await page.locator('#view').evaluate((i) => i.naturalWidth);
+  check('1:1 really is one image pixel per screen pixel',
+    Math.abs(oneToOne - natW) < 2, `${oneToOne} vs ${natW}`);
+
+  // Keyboard and wheel are the two ways anyone actually zooms.
+  await page.locator('#zfit').click();
+  await page.waitForTimeout(100);
+  await page.locator('#stage').click({ position: { x: 30, y: 30 } });
+  await page.keyboard.press('-');
+  await page.waitForTimeout(120);
+  check('the minus key zooms out', (await artBox()).width < fitBox.width - 4);
+  await page.keyboard.press('0');
+  await page.waitForTimeout(120);
+  check('the 0 key returns to fit', Math.abs((await artBox()).width - fitBox.width) < 2);
+
+  const sb = await page.locator('#stage').boundingBox();
+  await page.mouse.move(sb.x + sb.width / 2, sb.y + sb.height / 2);
+  await page.mouse.wheel(0, 240);
+  await page.waitForTimeout(150);
+  check('the wheel zooms out over the stage', (await artBox()).width < fitBox.width - 4,
+    `${fitBox.width} -> ${(await artBox()).width}`);
+
+  // Nearest-neighbour is right while magnifying and wrong while minifying, so
+  // the switch has to follow the magnification readout rather than the zoom
+  // factor: fit is already well above 100% for a small source on a big stage.
+  const smooth = () => page.locator('#stage').getAttribute('data-smooth');
+  for (let i = 0; i < 14 && parseInt(await zoomPct(), 10) >= 100; i++) {
+    await page.locator('#zout').click();
+    await page.waitForTimeout(60);
+  }
+  check('zooming out reaches below 100%', parseInt(await zoomPct(), 10) < 100,
+    await zoomPct());
+  check('minifying turns off nearest-neighbour', (await smooth()) === 'true',
+    `${await zoomPct()} smooth=${await smooth()}`);
+  await page.locator('#z11').click();
+  await page.waitForTimeout(120);
+  check('magnifying keeps the pixels crisp', (await smooth()) === 'false',
+    `${await zoomPct()} smooth=${await smooth()}`);
+
+  // ----------------------------------------------------------------- pan ---
+  await page.locator('#zfit').click();
+  await page.waitForTimeout(100);
+  for (let i = 0; i < 14 && (await page.locator('#stage').getAttribute('data-pan')) !== 'true'; i++) {
+    await page.locator('#zin').click();
+    await page.waitForTimeout(60);
+  }
+  check('zooming in eventually overflows the stage',
+    (await page.locator('#stage').getAttribute('data-pan')) === 'true');
+  // Stop at the threshold and there is nothing to pan; go well past it.
+  for (let i = 0; i < 3; i++) { await page.locator('#zin').click(); await page.waitForTimeout(60); }
+
+  const stageBox = await page.locator('#stage').boundingBox();
+  const panBefore = await contentBox();
+  // Pan only exists along an axis that actually overflows. The stage is much
+  // wider than it is tall, so a square design overflows vertically long before
+  // it overflows horizontally, and a sideways drag is correctly clamped dead.
+  const overX = panBefore.w > stageBox.width + 1;
+  const overY = panBefore.h > stageBox.height + 1;
+  check('the zoomed artwork overflows an axis', overX || overY,
+    `content ${Math.round(panBefore.w)}x${Math.round(panBefore.h)} ` +
+    `stage ${Math.round(stageBox.width)}x${Math.round(stageBox.height)}`);
+
+  const cx = stageBox.x + stageBox.width / 2, cy = stageBox.y + stageBox.height / 2;
+  const drag = async (dx, dy) => {
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx + dx, cy + dy, { steps: 12 });
+    await page.mouse.up();
+    await page.waitForTimeout(120);
+  };
+
+  await drag(overX ? -90 : 0, overY ? -90 : 0);
+  const panAfter = await contentBox();
+  const moved = Math.abs(panAfter.x - panBefore.x) + Math.abs(panAfter.y - panBefore.y);
+  check('dragging pans the zoomed artwork', moved > 20,
+    `(${Math.round(panBefore.x)},${Math.round(panBefore.y)}) -> ` +
+    `(${Math.round(panAfter.x)},${Math.round(panAfter.y)})`);
+  check('a drag on a clamped axis does not move it',
+    overX || Math.abs(panAfter.x - panBefore.x) < 1);
+
+  // Drag far past the edge: the artwork must never be flung off the stage.
+  await drag(stageBox.width * 4, stageBox.height * 4);
+  const flung = await contentBox();
+  const coversX = flung.x <= stageBox.x + 1
+    && flung.x + flung.w >= stageBox.x + stageBox.width - 1;
+  const coversY = flung.y <= stageBox.y + 1
+    && flung.y + flung.h >= stageBox.y + stageBox.height - 1;
+  check('pan is clamped to the overflow',
+    (!overX || coversX) && (!overY || coversY),
+    `content y ${Math.round(flung.y)}..${Math.round(flung.y + flung.h)} stage y ` +
+    `${Math.round(stageBox.y)}..${Math.round(stageBox.y + stageBox.height)}`);
+
+  await page.locator('#zfit').click();
+  await page.waitForTimeout(120);
+  const afterFit = await contentBox();
+  check('fit recentres the artwork after panning',
+    Math.abs((afterFit.x + afterFit.w / 2) - (stageBox.x + stageBox.width / 2)) < 2
+    && Math.abs((afterFit.y + afterFit.h / 2) - (stageBox.y + stageBox.height / 2)) < 2,
+    `centre (${Math.round(afterFit.x + afterFit.w / 2)},${Math.round(afterFit.y + afterFit.h / 2)})` +
+    ` vs (${Math.round(stageBox.x + stageBox.width / 2)},${Math.round(stageBox.y + stageBox.height / 2)})`);
+
+  // A zoom is a view setting, not a chain setting: editing must not throw it
+  // away, and it must not survive into an unrelated empty project either.
+  await page.locator('#zout').click();
+  await page.waitForTimeout(120);
+  const heldPct = await zoomPct();
+  await page.locator('#library button', { hasText: 'Levels' }).first().click();
+  await page.waitForTimeout(1200);
+  check('zoom survives adding a node', (await zoomPct()) === heldPct,
+    `${heldPct} -> ${await zoomPct()}`);
+  await page.locator('#zfit').click();
+  await page.waitForTimeout(120);
+
   // ------------------------------------------------------------- narrow ---
   // v1 had no breakpoint and simply broke below ~1100px.
   await page.setViewportSize({ width: 900, height: 800 });

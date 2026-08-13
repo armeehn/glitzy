@@ -155,10 +155,29 @@ input[type=file]{display:none}
    a preview render is smaller than a full one, so every switch between them
    would resize the box and shove the artwork across the screen. Fitting into a
    fixed box means changing resolution changes sharpness and nothing else. */
-.stage{position:absolute;left:1rem;right:1rem;top:1rem;bottom:1rem;
-  display:grid;place-items:center;line-height:0}
-.stage img{display:block;width:100%;height:100%;object-fit:contain;
-  background:var(--checker);image-rendering:pixelated}
+.stage{position:absolute;left:1rem;right:1rem;top:1rem;bottom:1rem;line-height:0;
+  /* Zoom scales the artwork past the box, so the stage clips it rather than
+     letting it spill over the rails. touch-action:none lets a drag pan
+     instead of scrolling the page on a trackpad or touchscreen. */
+  overflow:hidden;touch-action:none}
+.stage[data-art=true]{background:var(--checker)}
+.stage[data-pan=true]{cursor:grab}
+.stage[data-drag=true]{cursor:grabbing}
+/* The image must be positioned, not just sized. This was a grid with an
+   auto-sized row, and a percentage height on a child of an auto-sized row is
+   cyclic, so CSS resolved height:100% to `auto`: the image took its height
+   from its own aspect ratio, came out taller than the stage, and had its
+   bottom silently clipped -- a square design lost roughly a third of itself.
+   Absolutely positioning against the fixed stage makes the box definite, so
+   object-fit has the whole viewing area to fit into. */
+.stage img{position:absolute;left:0;top:0;display:block;width:100%;height:100%;
+  object-fit:contain;transform-origin:50% 50%;image-rendering:pixelated;
+  /* Belt and braces with the dragstart handler: a native image drag fires
+     pointercancel and kills the pan after a single mousemove. */
+  -webkit-user-drag:none;user-select:none}
+/* Nearest-neighbour is what makes block edges readable when magnifying, and
+   is exactly wrong when minifying -- it aliases fine detail into noise. */
+.stage[data-smooth=true] img{image-rendering:auto}
 .empty{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   width:min(46ch,90%);text-align:center;color:var(--fg-dim);
   display:flex;flex-direction:column;gap:.5rem}
@@ -176,6 +195,11 @@ input[type=file]{display:none}
 .prog i{display:block;height:100%;background:var(--pink);width:0;transition:width .2s linear}
 .trow{display:flex;align-items:center;gap:.5rem;padding:.4rem .6rem;flex-wrap:wrap}
 .trow input[type=range]{flex:1;min-width:80px}
+.zoomctl{display:flex;align-items:center;gap:.2rem;flex:0 0 auto}
+.zoomctl .btn.sm{min-width:1.7rem;text-align:center}
+.zoomctl .btn[data-on=true]{border-color:var(--accent);color:var(--accent)}
+.zlvl{font-size:.62rem;color:var(--fg-dim);min-width:4.2ch;text-align:center;
+  font-variant-numeric:tabular-nums}
 
 /* ---------------------------------------------------------------- chain -- */
 .chainwrap{border-top:1px solid var(--rule);background:var(--surface);
@@ -259,7 +283,6 @@ dialog::backdrop{background:rgba(0,0,0,.6)}
   body[data-pane=left] .rail.right{display:none}
   body[data-pane=right] .rail.left{display:none}
   .only-narrow{display:inline-flex}
-  .stage img{max-height:calc(100vh - 20rem)}
 }
 @media (max-width:640px){
   .top{gap:.35rem .5rem}
