@@ -13,7 +13,7 @@
     "check": "node --check etsch/public/js/main.js",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
-    "test": "node --test \"etsch/tests/**/*.test.mjs\"",
+    "test": "node --test",
     "test:studio": "python3 studio/tests/test_backend.py",
     "preview": "node etsch/tests/preview.mjs docs"
   },
