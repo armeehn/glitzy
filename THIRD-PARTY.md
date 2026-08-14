@@ -9,6 +9,13 @@ Versions below are the ones the project is developed and tested against. They
 are recorded so a claim here can be checked, not because other versions are
 forbidden.
 
+`LICENSE` is kept as the bare, unmodified MIT text on purpose — GitHub,
+`licensee` and most SBOM tooling match it by content, and appending even a
+sentence to it makes the repository's licence detect as "Other". Everything
+that would have gone in that appendix is here instead: the MIT licence covers
+this repository's own code and nothing else. The third-party software below
+carries its own terms, and one of them is copyleft.
+
 ---
 
 ## The studio (`studio/`)
