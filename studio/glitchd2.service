@@ -1,0 +1,31 @@
+[Unit]
+Description=Glitchsheet engine v2 (chain studio)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/glitchsheet2
+ExecStart=/usr/bin/python3 -m glitchd.server
+Environment=PYTHONUNBUFFERED=1
+Environment=GLITCHSHEET_DATA=/var/lib/glitchsheet2
+Environment=GLITCHSHEET_WEB=/opt/glitchsheet2/web
+Environment=GLITCHSHEET_RACK=/opt/glitchsheet2/rack
+Environment=GLITCHSHEET_PORT=8090
+Environment=GLITCHSHEET_FFGAC=/opt/ffglitch/bin/ffgac
+Environment=GLITCHSHEET_FFEDIT=/opt/ffglitch/bin/ffedit
+# Where "Open in Cutsheet" hands the sheet. The studio hides the button and the
+# header link when this is empty rather than guessing a URL -- the old
+# hard-coded cutsheet.armeehn.workers.dev never existed, so the link looked
+# live and went nowhere. Cutsheet is served by Caddy on LXC 104 from
+# /var/www/cutsheet; the /handoff/ path there proxies back to this engine.
+Environment=GLITCHSHEET_CUTSHEET=https://cutsheet.hq.ripostelabs.xyz
+Restart=on-failure
+RestartSec=2
+# The host is RAM-oversubscribed and the container has 2 GB. numpy frame stacks
+# are the whole memory story here, so cap the engine rather than let a 240-frame
+# chain at 1600 px take the container down.
+MemoryMax=1400M
+Nice=5
+
+[Install]
+WantedBy=multi-user.target
