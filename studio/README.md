@@ -1,9 +1,9 @@
-# Glitchsheet 2
+# Glitzy
 
 A studio for building glitch artwork out of chains of operations, and turning the
-results into cut-ready stickers for [cutsheet](https://cutsheet.armeehn.workers.dev/).
+results into cut-ready stickers for [etsch](https://etsch.armeehn.workers.dev/).
 
-Live at `https://glitchsheet.hq.ripostelabs.xyz/` (Authelia-gated), engine in **LXC 114**.
+Live at `https://glitzy.hq.ripostelabs.xyz/` (Authelia-gated), engine in **LXC 114**.
 
 ## What it is
 
@@ -90,7 +90,7 @@ never learns its name.
 ## Layout
 
 ```
-app/glitchd/          the engine (Python 3 stdlib + numpy + Pillow)
+app/glitzyd/          the engine (Python 3 stdlib + numpy + Pillow)
   clip.py             the Clip type; frames on disk as PNGs
   store.py            content-addressed cache, sources, projects
   graph.py            chain and stack evaluation, cache reuse
@@ -99,7 +99,7 @@ app/glitchd/          the engine (Python 3 stdlib + numpy + Pillow)
   ff.py               ffgac/ffedit bridge: encode → glitch → decode
   nputil.py           sampling, blur, bounded distance transform, noise
   palettes.py         colourways, shared by generators and colour ops
-  exporters.py        PNG, sequence, GIF, APNG, and the cutsheet/1 sheet
+  exporters.py        PNG, sequence, GIF, APNG, and the etsch/1 sheet
   server.py           HTTP API and static host
   ops/                the op library, one module per family
 app/rack/             ffedit qjs scripts (one per codec op)
@@ -114,8 +114,8 @@ ffglitch binaries, and the UI test drives real Chromium.
 
 ```bash
 ./deploy.sh                                        # from x
-pct exec 114 -- sh -c 'cd /opt/glitchsheet2 && python3 tests/test_backend.py'
-pct exec 114 -- sh -c 'cp /opt/glitchsheet2/tests/uitest.mjs /root/uitest/gs2.mjs \
+pct exec 114 -- sh -c 'cd /opt/glitzy && python3 tests/test_backend.py'
+pct exec 114 -- sh -c 'cp /opt/glitzy/tests/uitest.mjs /root/uitest/gs2.mjs \
   && cd /root/uitest && node gs2.mjs http://localhost:8090'
 ```
 
@@ -144,7 +144,7 @@ pct exec 114 -- sh -c 'cp /opt/glitchsheet2/tests/uitest.mjs /root/uitest/gs2.mj
 - Upscaling for print is integer **nearest-neighbour, rounded up**. Bicubic destroys the
   block edges; rounding down silently prints below the requested DPI.
 - The silhouette and its die-cut border are baked into the artwork's **alpha**, because
-  cutsheet traces the contour of the transparency. So the sheet asks for `contour` at
+  etsch traces the contour of the transparency. So the sheet asks for `contour` at
   `offset: 0` — adding an offset as well cuts a second line outside the border.
 
 **Browser**
@@ -163,7 +163,7 @@ pct exec 114 -- sh -c 'cp /opt/glitchsheet2/tests/uitest.mjs /root/uitest/gs2.mj
 ## Deploying
 
 `./deploy.sh [--restart]` copies the tree into LXC 114 via its ZFS subvol and restarts
-`glitchd2`. The unit is `glitchd2.service`, port **8090**, data in `/var/lib/glitchsheet2`.
+`glitzyd`. The unit is `glitzyd.service`, port **8090**, data in `/var/lib/glitzy`.
 
-v1 still exists on port 8080 as `glitchd`, so rollback is one line in
-`/etc/caddy/sites/160-glitchsheet.caddy` plus `systemctl reload caddy` on LXC 104.
+v1 still exists on port 8080 as `glitzyd`, so rollback is one line in
+`/etc/caddy/sites/160-glitzy.caddy` plus `systemctl reload caddy` on LXC 104.

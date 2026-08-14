@@ -1,6 +1,6 @@
-# Cutsheet
+# Etsch
 
-[![tests](https://github.com/armeehn/cutsheet/actions/workflows/tests.yml/badge.svg)](https://github.com/armeehn/cutsheet/actions/workflows/tests.yml)
+[![tests](https://github.com/armeehn/etsch/actions/workflows/tests.yml/badge.svg)](https://github.com/armeehn/etsch/actions/workflows/tests.yml)
 
 Lay out images on a print sheet, set the bleed and margins, and generate cut
 lines for a vinyl cutter. Everything runs in the browser — images never leave
@@ -36,7 +36,7 @@ mats are one dropdown away, plus any custom size.
 - Print file: PNG, JPEG or PDF at 150/300/600 DPI, with or without bleed and marks.
 - Cut file: SVG at true size (1 unit = 1 mm) with paths on a layer named `CutContour`, either alongside the embedded artwork or on its own. DXF in millimetres for plotters and CAM.
 - The PDF carries a `TrimBox` and vector cut paths in cut magenta.
-- Projects save to a `.cutsheet.json` file, and the current sheet is restored automatically on your next visit (IndexedDB).
+- Projects save to a `.etsch.json` file, and the current sheet is restored automatically on your next visit (IndexedDB).
 
 ## Running it locally
 
@@ -56,7 +56,7 @@ The site is static, so it deploys as a Cloudflare Worker with static assets.
 
 ```sh
 npx wrangler login          # one time, opens a browser
-npx wrangler deploy         # -> https://cutsheet.<your-subdomain>.workers.dev
+npx wrangler deploy         # -> https://etsch.<your-subdomain>.workers.dev
 ```
 
 For CI or a headless machine, set `CLOUDFLARE_API_TOKEN` (Workers Scripts:Edit
@@ -65,7 +65,7 @@ permission) and `CLOUDFLARE_ACCOUNT_ID` instead of logging in.
 To serve it from your own domain, add a route in `wrangler.toml`:
 
 ```toml
-routes = [{ pattern = "cutsheet.example.com", custom_domain = true }]
+routes = [{ pattern = "etsch.example.com", custom_domain = true }]
 ```
 
 `public/_headers` sets a strict Content-Security-Policy, `nosniff`, and a
@@ -87,7 +87,7 @@ syntax check of every browser module and a credential-free
 - `tests/canvas.test.mjs` — contour tracing against real artwork, sheet
   rasterisation and the PNG/JPEG/PDF writers, using `@napi-rs/canvas` in place
   of the browser's `OffscreenCanvas`. Skips if that dev dependency is missing.
-- `tests/project.test.mjs` — the `.cutsheet.json` round trip: saving a sheet,
+- `tests/project.test.mjs` — the `.etsch.json` round trip: saving a sheet,
   reopening it, and doing so without a network request (the deployed
   `connect-src 'self'` refuses the `data:` URLs a project file is made of).
 - `tests/dom.test.mjs` — boots `public/index.html` in jsdom and drives the

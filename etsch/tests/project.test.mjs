@@ -1,4 +1,4 @@
-// Project persistence: the .cutsheet.json round trip.
+// Project persistence: the .etsch.json round trip.
 //
 // Regression cover for a bug that only showed up once the site was deployed.
 // applyPayload() rebuilt each image by fetching its inlined data: URL, and
@@ -145,6 +145,37 @@ test('project: the deployed CSP still refuses data: on connect-src', () => {
 });
 
 test('project: an unusable file is rejected with a readable message', async () => {
-  await assert.rejects(() => project.loadProjectFile(new Blob(['not json'])), /not a Cutsheet project/);
+  await assert.rejects(() => project.loadProjectFile(new Blob(['not json'])), /not an Etsch project/);
   await assert.rejects(() => project.loadProjectFile(new Blob(['{"format":"nope"}'])), /Unrecognised project format/);
+});
+
+// --- the rename must not orphan anybody's saved work -----------------------
+// This tool was called Cutsheet and stamped `cutsheet/1` into every sheet it
+// wrote. Those files are the same document; only the name on the tin changed.
+// If this pair goes red, the rename ate someone's sheet.
+
+test('project: a sheet saved before the rename still opens', async () => {
+  resetDoc();
+  const legacy = JSON.stringify({
+    format: 'cutsheet/1',
+    savedAt: new Date().toISOString(),
+    doc: { ...state.defaultDoc(), name: 'Made in Cutsheet', bleed: 3, items: [] },
+    images: [],
+  });
+  await project.loadProjectFile(new Blob([legacy], { type: 'application/json' }));
+  assert.equal(doc.name, 'Made in Cutsheet');
+  assert.equal(doc.bleed, 3);
+});
+
+test('project: a sheet saved now is stamped etsch/1, never the old name', async () => {
+  resetDoc();
+  const saved = JSON.parse(await (await project.serializeProject()).text());
+  assert.equal(saved.format, 'etsch/1', 'new sheets carry the new format id');
+});
+
+test('project: the autosave database keeps its pre-rename name', () => {
+  // Renaming it opens a different, empty IndexedDB: every sheet in progress
+  // would vanish silently on the next deploy. The name is load-bearing.
+  const src = readFileSync(join(import.meta.dirname, '../public/js/project.js'), 'utf8');
+  assert.match(src, /const DB_NAME = 'cutsheet';/);
 });

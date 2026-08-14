@@ -1,0 +1,31 @@
+# Cloudflare Workers static-asset deployment for Etsch, the cutting half of
+# Glitzy.
+#
+#   npx wrangler deploy         -> https://glitzy.ripostelabs.xyz
+#
+# Only Etsch is published here. The studio half is a Python/numpy/ffglitch
+# backend that spawns subprocesses and accepts uploads: it cannot run on
+# Workers, and it is not something to put on the open internet. It is
+# self-hosted behind an authenticating proxy instead -- see studio/README.md.
+#
+# There is no Worker code. `assets` with no `main` means Cloudflare serves the
+# directory directly and nothing runs per request, so there is no per-request
+# billing and no runtime to keep patched.
+
+name = "glitzy"
+compatibility_date = "2025-06-01"
+
+[assets]
+directory = "./etsch/public"
+# Unknown paths fall back to the single page rather than a 404.
+not_found_handling = "single-page-application"
+
+# Attaching the hostname here rather than in the dashboard keeps it in version
+# control, so a fresh account can be rebuilt from this file alone. Cloudflare
+# writes the DNS record itself -- the zone is on the same account.
+[[routes]]
+pattern = "glitzy.ripostelabs.xyz"
+custom_domain = true
+
+[observability]
+enabled = true

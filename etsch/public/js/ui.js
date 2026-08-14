@@ -193,7 +193,7 @@ function wireTopbar() {
 export async function saveProject() {
   try {
     const blob = await project.serializeProject();
-    exporters.download(blob, `${exporters.safeName(doc.name)}.cutsheet.json`);
+    exporters.download(blob, `${exporters.safeName(doc.name)}.etsch.json`);
     toast('Project saved', 'ok');
   } catch (err) {
     toast(`Save failed: ${err.message}`, 'error');
@@ -202,7 +202,7 @@ export async function saveProject() {
 
 export async function importFiles(files, at = null) {
   const imageFiles = files.filter((f) => f.type.startsWith('image/'));
-  const projectFile = files.find((f) => /\.(json|cutsheet)$/i.test(f.name) && !f.type.startsWith('image/'));
+  const projectFile = files.find((f) => /\.(json|etsch)$/i.test(f.name) && !f.type.startsWith('image/'));
 
   if (projectFile) {
     try {
