@@ -51,6 +51,10 @@ CTYPES = {
     ".css": "text/css; charset=utf-8", ".png": "image/png", ".jpg": "image/jpeg",
     ".svg": "image/svg+xml", ".woff2": "font/woff2", ".json": "application/json",
     ".ico": "image/png", ".map": "application/json",
+    # The bundled font's OFL text is served next to the font it covers. Without
+    # this it falls through to octet-stream and the browser downloads the
+    # licence instead of showing it, which defeats the point of linking to it.
+    ".txt": "text/plain; charset=utf-8",
 }
 
 FAVICON = bytes.fromhex(

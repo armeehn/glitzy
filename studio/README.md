@@ -90,7 +90,7 @@ never learns its name.
 ## Layout
 
 ```
-app/glitzyd/          the engine (Python 3 stdlib + numpy + Pillow)
+glitzyd/              the engine (Python 3 stdlib + numpy + Pillow)
   clip.py             the Clip type; frames on disk as PNGs
   store.py            content-addressed cache, sources, projects
   graph.py            chain and stack evaluation, cache reuse
@@ -102,8 +102,8 @@ app/glitzyd/          the engine (Python 3 stdlib + numpy + Pillow)
   exporters.py        PNG, sequence, GIF, APNG, and the etsch/1 sheet
   server.py           HTTP API and static host
   ops/                the op library, one module per family
-app/rack/             ffedit qjs scripts (one per codec op)
-app/web/              the studio — native ES modules, no build step
+rack/                 ffedit qjs scripts (one per codec op)
+web/                  the studio — native ES modules, no build step
 tests/                test_backend.py (157 checks), uitest.mjs (87 checks)
 ```
 
@@ -165,5 +165,8 @@ pct exec 114 -- sh -c 'cp /opt/glitzy/tests/uitest.mjs /root/uitest/gs2.mjs \
 `./deploy.sh [--restart]` copies the tree into LXC 114 via its ZFS subvol and restarts
 `glitzyd`. The unit is `glitzyd.service`, port **8090**, data in `/var/lib/glitzy`.
 
-v1 still exists on port 8080 as `glitzyd`, so rollback is one line in
-`/etc/caddy/sites/160-glitzy.caddy` plus `systemctl reload caddy` on LXC 104.
+The old v1 engine still exists on port 8080. It kept its original unit name,
+`glitchd.service` — that is not a typo and the rename did not touch it, because
+renaming a running service that this one falls back to would break the only
+rollback there is. Rollback is one line in `/etc/caddy/sites/160-glitzy.caddy`
+plus `systemctl reload caddy` on LXC 104.

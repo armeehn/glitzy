@@ -14,10 +14,15 @@ Environment=GLITZY_PORT=8090
 Environment=GLITZY_FFGAC=/opt/ffglitch/bin/ffgac
 Environment=GLITZY_FFEDIT=/opt/ffglitch/bin/ffedit
 # Where "Open in Etsch" hands the sheet. The studio hides the button and the
-# header link when this is empty rather than guessing a URL -- the old
-# hard-coded etsch.armeehn.workers.dev never existed, so the link looked
-# live and went nowhere. Etsch is served by Caddy on LXC 104 from
-# /var/www/etsch; the /handoff/ path there proxies back to this engine.
+# header link when this is empty rather than guessing a URL -- a hard-coded
+# cutsheet.armeehn.workers.dev (the tool's old name, on a host that never
+# existed) looked live and went nowhere for two sessions.
+#
+# This must be the INTERNAL Etsch, not the public glitzy.ripostelabs.xyz. The
+# handoff works by Etsch fetching /handoff/<id> on its OWN origin, which the
+# proxy rewrites to this engine -- Etsch ships connect-src 'self', so a
+# cross-origin fetch is refused, and Cross-Origin-Opener-Policy severs
+# window.opener too. The public Worker has no /handoff/ route and 404s.
 Environment=GLITZY_ETSCH=https://etsch.hq.ripostelabs.xyz
 Restart=on-failure
 RestartSec=2

@@ -25,6 +25,7 @@
          because a hard-coded one pointed at a host that did not exist. -->
     <a class="btn ghost sm" id="etsch-link" href="#" target="_blank"
        rel="noopener" hidden>Etsch ↗</a>
+    <button class="btn ghost sm" id="about" title="Licence and credits">About</button>
     <button class="btn sm only-narrow" id="panes" aria-label="Switch panel">Panels</button>
   </header>
 
@@ -208,6 +209,28 @@ see is what Keep and the exports use, so a solo view keeps a single layer.">
      address. A link kept from a year ago still resolves to the same bytes.</p>
   <div id="filelist" class="filelist"></div>
   <div class="row end"><button class="btn sm" id="closefiles">Close</button></div>
+</dialog>
+
+<dialog id="aboutdlg">
+  <h3>Glitzy studio</h3>
+  <p class="hint">A chain studio for glitch artwork, and the first half of
+     Glitzy. Finished sheets hand off to <b>Etsch</b>, the cutting tool.
+     Free software under the MIT licence —
+     <a href="https://github.com/armeehn/glitzy" target="_blank" rel="noopener noreferrer">source on GitHub</a>.</p>
+
+  <h3>Standing on</h3>
+  <p class="hint">The <code>codec.*</code> operations are
+     <a href="https://ffglitch.org/" target="_blank" rel="noopener noreferrer">ffglitch</a>
+     (ffedit / ffgac) by Ramiro Polla, on FFmpeg — <b>GPL-2.0-or-later</b>, run
+     as a separate process and not redistributed here. Everything else is
+     <b>NumPy</b> (BSD-3-Clause) and <b>Pillow</b> (MIT-CMU). Type is
+     <a href="https://github.com/JetBrains/JetBrainsMono" target="_blank" rel="noopener noreferrer">JetBrains Mono</a>
+     2.211, © 2020 The JetBrains Mono Project Authors, under the
+     <a href="/fonts/JetBrainsMono-OFL.txt" target="_blank" rel="noopener noreferrer">SIL Open Font License 1.1</a>.</p>
+  <p class="hint">Full notices, and what each licence asks of you, are in
+     <a href="https://github.com/armeehn/glitzy/blob/main/THIRD-PARTY.md" target="_blank" rel="noopener noreferrer">THIRD-PARTY.md</a>.</p>
+
+  <div class="row end"><button class="btn sm" id="closeabout">Close</button></div>
 </dialog>
 
 <script type="module" src="/js/main.js"></script>
