@@ -104,7 +104,7 @@ glitzyd/              the engine (Python 3 stdlib + numpy + Pillow)
   ops/                the op library, one module per family
 rack/                 ffedit qjs scripts (one per codec op)
 web/                  the studio — native ES modules, no build step
-tests/                test_backend.py (157 checks), uitest.mjs (87 checks)
+tests/                test_backend.py (186 checks), uitest.mjs (102 checks)
 ```
 
 ## Running the tests
@@ -115,9 +115,25 @@ ffglitch binaries, and the UI test drives real Chromium.
 ```bash
 ./deploy.sh                                        # from x
 pct exec 114 -- sh -c 'cd /opt/glitzy && python3 tests/test_backend.py'
-pct exec 114 -- sh -c 'cp /opt/glitzy/tests/uitest.mjs /root/uitest/gs2.mjs \
-  && cd /root/uitest && node gs2.mjs http://localhost:8090'
+pct exec 114 -- sh -c 'cp /opt/glitzy/tests/uitest.mjs /root/uitest/glitzy.mjs \
+  && cd /root/uitest && node glitzy.mjs http://localhost:8090'
 ```
+
+The UI test **must be copied into `/root/uitest` and run from there**. Node resolves
+`playwright-core` relative to the script, so running it out of `/opt/glitzy/tests`
+fails to import before it checks anything.
+
+The backend suite needs no running service — it drives the engine library directly
+against a temporary data directory — so it is safe to run while the live one is up.
+The UI suite needs a server; point it at a spare port rather than the live one:
+
+```bash
+GLITZY_DATA=/tmp/glitzy-uitest GLITZY_PORT=8099 python3 -m glitzyd.server &
+```
+
+Kill that by **PID**. `pkill -f glitzyd.server` also matches the shell running the
+pkill, so it kills the wrapper, returns 143, and leaves the engine up — which then
+looks like the kill silently failed.
 
 ## Things that will bite you
 
