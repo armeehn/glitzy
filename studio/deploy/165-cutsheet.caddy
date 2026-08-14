@@ -1,0 +1,48 @@
+# cutsheet.hq.ripostelabs.xyz -> Cutsheet, served straight off this box.
+#
+# Cutsheet is a static, server-less app (upstream deploys it to Cloudflare), so
+# there is no container and no upstream to proxy: the tree lives in
+# /var/www/cutsheet here and Caddy is the whole server. Update it with
+# /root/work/glitchsheet-v2/deploy-cutsheet.sh on x.
+#
+# Until 2026-08-13 it was not deployed anywhere at all, while Glitchsheet's
+# header linked to cutsheet.armeehn.workers.dev -- a host that has never
+# resolved. Sheets built by Glitchsheet were fine; there was simply nowhere to
+# open them.
+#
+# /handoff/<id> is the one dynamic route. Glitchsheet's "Open in Cutsheet"
+# stores the finished sheet as a file on its own engine and sends the browser
+# here with #handoff=<that file id>; this path is how Cutsheet reads it back.
+# It is proxied onto THIS origin rather than fetched from glitchsheet.hq
+# because Cutsheet ships `connect-src 'self'` -- a cross-origin fetch would be
+# refused by the browser, and widening that CSP for one feature is a worse
+# trade than proxying one path. The id shape is checked on both sides
+# (16 lowercase hex); anything else never leaves the browser.
+@cutsheet host cutsheet.hq.ripostelabs.xyz
+handle @cutsheet {
+	import authelia
+
+	handle_path /handoff/* {
+		rewrite * /api/file{uri}
+		reverse_proxy 10.0.1.178:8090
+	}
+
+	handle {
+		# Mirrors public/_headers, which only Cloudflare Pages reads. Keep the
+		# two in step: the CSP is what makes "Open project" decode its own
+		# data: URLs instead of fetching them.
+		header {
+			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+			X-Content-Type-Options nosniff
+			Referrer-Policy no-referrer
+			Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+			Cross-Origin-Opener-Policy same-origin
+			-Server
+		}
+		root * /var/www/cutsheet
+		# Unknown paths fall back to the single page, matching wrangler.toml's
+		# not_found_handling = "single-page-application".
+		try_files {path} /index.html
+		file_server
+	}
+}
