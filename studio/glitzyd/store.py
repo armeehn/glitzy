@@ -22,9 +22,11 @@ SRC_DIR = os.path.join(DATA_DIR, "sources")
 PROJ_DIR = os.path.join(DATA_DIR, "projects")
 FILES_DIR = os.path.join(DATA_DIR, "files")
 
-# The rootfs is 20 GB and the cache is pure scratch -- every entry can be
-# recomputed from the project graph. Keep it well clear of the disk.
-CACHE_BUDGET = 6 * 1024 * 1024 * 1024
+# The cache is pure scratch -- every entry can be recomputed from the project
+# graph -- so this is a disk budget, not a correctness one. The default suits a
+# 20 GB rootfs; keep it well clear of the filesystem's actual size. Unlike the
+# memory budgets, getting this one wrong costs recompute, not a SIGKILL.
+CACHE_BUDGET = int(os.environ.get("GLITZY_CACHE_BUDGET") or 6 * 1024 * 1024 * 1024)
 ID_RE = re.compile(r"^[a-f0-9]{12}$")
 HASH_RE = re.compile(r"^[a-f0-9]{40}$")
 FILE_RE = re.compile(r"^[a-f0-9]{16}$")

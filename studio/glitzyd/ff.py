@@ -30,6 +30,47 @@ class FFError(Exception):
     pass
 
 
+_version_cache = None
+
+
+def version():
+    """Actually run ffedit and report what happened.
+
+    This exists because /api/health used to return the string "0.10.2"
+    unconditionally. On a host where the binary was present but could not start
+    -- a missing shared library, the single most likely thing to be wrong on a
+    fresh machine -- health answered `ok` with a version number it had never
+    asked for, and the first sign of trouble was a render failing much later.
+
+    A dynamic-linker failure is the interesting case: the file exists, is
+    executable, and still cannot run, so `os.path.exists` and a version string
+    both lie. Only executing it tells the truth.
+
+    Cached: this shells out, and health is polled.
+    """
+    global _version_cache
+    if _version_cache is None:
+        # Both streams: the banner goes to stdout, and the failure that matters
+        # here -- "error while loading shared libraries" -- goes to stderr. Read
+        # only one and the probe reports "unknown" on a healthy host, or a
+        # blank error on a broken one.
+        try:
+            p = subprocess.run([FFEDIT, "-version"], capture_output=True, timeout=20)
+            rc = p.returncode
+            out = ((p.stdout or b"") + b"\n" + (p.stderr or b"")).decode("utf-8", "replace").strip()
+        except FileNotFoundError:
+            rc, out = 127, "ffedit not found at %s" % FFEDIT
+        except subprocess.TimeoutExpired:
+            rc, out = 124, "ffedit did not respond to -version"
+        m = re.search(r"ffedit version (\S+)", out)
+        if rc != 0 or not m:
+            first = next((l for l in out.splitlines() if l.strip()), "exit %d" % rc)
+            _version_cache = {"ok": False, "error": first[:200]}
+        else:
+            _version_cache = {"ok": True, "version": m.group(1)}
+    return _version_cache
+
+
 def run(cmd, timeout=900, full=False):
     """Run a command, returning (rc, stderr). Never raises on a non-zero exit.
 

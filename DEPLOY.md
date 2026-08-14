@@ -80,6 +80,19 @@ unhealthy.
 
 ---
 
+## Running the studio somewhere else
+
+`studio/deploy/provision.sh <user@host>` provisions the studio onto a fresh
+Ubuntu 22.04+ / Debian 13 host, **x86-64 or arm64**, sizing the unit from that
+host's own RAM and disk. It binds to `127.0.0.1` unless told otherwise, because
+the engine has no authentication of its own.
+
+Requirements, and the remote-access options including the Tailscale route that
+needs no new machine at all, are in
+**[studio/deploy/REMOTE-ACCESS.md](studio/deploy/REMOTE-ACCESS.md)**. The short
+version: **2 GB RAM is the floor** — one render peaks near 900 MB, and below a
+~1.4 GB ceiling the cgroup kills the engine, which looks like a 502.
+
 ## The studio → a host you control
 
 The studio is **not** on the public internet and should not be. It accepts file
