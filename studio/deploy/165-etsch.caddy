@@ -18,7 +18,11 @@
 # refused by the browser, and widening that CSP for one feature is a worse
 # trade than proxying one path. The id shape is checked on both sides
 # (16 lowercase hex); anything else never leaves the browser.
-@etsch host etsch.hq.ripostelabs.xyz
+# cutsheet.hq is the tool's pre-rename name, kept answering on purpose so no
+# bookmark or shared link breaks. Both names serve the same tree; neither is a
+# redirect, because a redirect would strip the #handoff= fragment the studio
+# sends -- fragments are not sent to the server, so Caddy cannot put one back.
+@etsch host etsch.hq.ripostelabs.xyz cutsheet.hq.ripostelabs.xyz
 handle @etsch {
 	import authelia
 

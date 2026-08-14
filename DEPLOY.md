@@ -112,3 +112,25 @@ it comes up clean and every previously-shared link 404s with "that export has
 expired". The service name changes from `glitchd2` to `glitzyd`; the *v1*
 engine's unit is still `glitchd` and should be left alone, since it is the
 rollback.
+
+Check the move worked by the cache, not by the service starting:
+
+```sh
+curl -s localhost:8090/api/health   # cache.entries must be what it was, not 0
+```
+
+### Keeping the old hostnames answering
+
+`studio/deploy/160-glitzy.caddy` and `165-etsch.caddy` each match **two**
+hostnames — the new name and the pre-rename one — so nothing anybody has
+bookmarked breaks.
+
+They are aliases, not redirects, and that is deliberate: the studio sends the
+browser to Etsch with the sheet id in a **URL fragment** (`#handoff=<id>`), and
+fragments are never sent to the server. A 301 from the old name to the new one
+would arrive with no fragment to put back, so the handoff would land on an
+empty sheet with no error anywhere.
+
+Both names must also be listed in Authelia's access-control rule. Authelia
+matches the *first* rule whose domain matches; an alias that is not listed does
+not inherit the rule, it falls through to the default policy.
