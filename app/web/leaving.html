@@ -34,7 +34,9 @@
   <p class="err" id="err" hidden></p>
 
   <div class="actions">
-    <button class="btn primary" id="go" disabled>Continue to Cutsheet &rarr;</button>
+    <!-- A real link, not a button: the destination belongs in the status bar
+         where anyone can read it before they commit to it. -->
+    <a class="btn primary" id="go" role="button" aria-disabled="true">Continue to Cutsheet &rarr;</a>
     <button class="btn" id="stay">Stay in Glitchsheet</button>
     <a class="btn ghost" id="dl" href="#" hidden download>Download the file instead</a>
   </div>

@@ -55,4 +55,9 @@ body.leaving{
 }
 
 .actions{display:flex; flex-wrap:wrap; gap:.5rem; align-items:center}
-.actions .ghost{margin-left:auto; text-decoration:none; display:inline-block}
+.actions .ghost{margin-left:auto}
+/* Continue and the download fallback are links, so they need the parts of .btn
+   that only apply to a <button>, plus a disabled look the attribute cannot
+   give them. */
+a.btn{display:inline-block; text-decoration:none; text-align:center}
+a.btn[aria-disabled="true"]{opacity:.4; cursor:not-allowed}

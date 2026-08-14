@@ -34,7 +34,15 @@ function fail(msg) {
   box.textContent = msg;
   box.hidden = false;
   $('#note').hidden = true;
-  $('#go').disabled = true;
+  disable($('#go'));
+}
+
+/* The Continue control is an <a>, so "disabled" is a state we keep ourselves:
+   no href (nothing to activate, and it drops out of the tab order the moment
+   it has nothing to do) plus aria-disabled for anyone listening. */
+function disable(a) {
+  a.removeAttribute('href');
+  a.setAttribute('aria-disabled', 'true');
 }
 
 async function main() {
@@ -93,14 +101,18 @@ async function main() {
     + 'Cutsheet in this tab and loads it there automatically.';
 
   const go = $('#go');
-  go.disabled = false;
+  const dest = `${base}/#handoff=${id}`;
+  go.href = dest;
+  go.setAttribute('aria-disabled', 'false');
   go.focus();
-  go.addEventListener('click', () => {
-    go.disabled = true;
+  go.addEventListener('click', (e) => {
+    // replace(), not the link's own navigation: going Back should land in the
+    // studio, not on an interstitial that immediately forwards again. The href
+    // stays real so the destination is visible and the link still works if
+    // this handler never runs.
+    e.preventDefault();
     setState('Opening Cutsheet', 'ready');
-    // replace(), not href=: the back button should land in the studio, not on
-    // an interstitial that immediately forwards again.
-    location.replace(`${base}/#handoff=${id}`);
+    location.replace(dest);
   });
 }
 
