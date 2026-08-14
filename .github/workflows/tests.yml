@@ -34,6 +34,12 @@ jobs:
 
       # The TAP reporter is pinned because Node 24 defaults to the spec
       # reporter even off a TTY, which would change the summary format.
+      #
+      # npm appends these args to the end of the script, so the script must not
+      # end in a positional argument. `node --test <glob> --test-reporter=tap`
+      # silently ignores the reporter, the summary stays in spec format, and the
+      # grep below finds nothing and fails the job -- which is what happened,
+      # and only on Node 24, because Node 22 still defaults to TAP off a TTY.
       - name: Run tests
         shell: bash
         run: |
