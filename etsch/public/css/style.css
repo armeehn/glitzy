@@ -454,8 +454,13 @@ dialog {
   box-shadow: 0 24px 60px rgba(0,0,0,0.6);
 }
 dialog::backdrop { background: rgba(10,11,13,0.6); backdrop-filter: blur(2px); }
-dialog form { padding: 18px 20px 16px; }
+/* The credits made this dialog taller than a laptop viewport. One scroller on
+   the dialog itself, never a nested one on a section inside it: an inner
+   max-height box eats the wheel gesture and the content below it becomes
+   unreachable without ever looking clipped. */
+dialog form { padding: 18px 20px 16px; max-height: min(80vh, 640px); overflow-y: auto; }
 dialog h2 { margin: 0 0 14px; font-size: 15px; }
+dialog h2 + h2, .shortcuts + h2, .about + h2 { margin-top: 22px; }
 dialog h3 { margin: 16px 0 8px; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--faint); }
 dialog menu { margin: 18px 0 0; padding: 0; display: flex; justify-content: flex-end; }
 
@@ -463,6 +468,12 @@ dialog menu { margin: 18px 0 0; padding: 0; display: flex; justify-content: flex
 .shortcuts dt { color: var(--accent); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .shortcuts dd { margin: 0; color: var(--dim); }
 .shortcuts b { color: var(--text); font-weight: 600; }
+
+.about { margin: 0 0 10px; font-size: 12px; line-height: 1.55; color: var(--dim); }
+.about b { color: var(--text); font-weight: 600; }
+.about a { color: var(--accent); }
+.about code { font-size: 11px; color: var(--text); }
+.about.credits { margin-bottom: 0; color: var(--faint); font-size: 11px; }
 
 @media (max-width: 1100px) {
   :root { --panel-w: 250px; }

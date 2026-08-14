@@ -1,14 +1,14 @@
 # etsch.hq.ripostelabs.xyz -> Etsch, served straight off this box.
 #
-# Etsch is a static, server-less app (upstream deploys it to Cloudflare), so
-# there is no container and no upstream to proxy: the tree lives in
-# /var/www/etsch here and Caddy is the whole server. Update it with
-# /root/work/glitzy-v2/deploy-etsch.sh on x.
+# Etsch is a static, server-less app (it also deploys to Cloudflare as the
+# public glitzy.ripostelabs.xyz), so there is no container and no upstream to
+# proxy: the tree lives in /var/www/etsch here and Caddy is the whole server.
+# Update it with studio/deploy-etsch.sh from the repo, run on x.
 #
-# Until 2026-08-13 it was not deployed anywhere at all, while Glitzy's
-# header linked to etsch.armeehn.workers.dev -- a host that has never
-# resolved. Sheets built by Glitzy were fine; there was simply nowhere to
-# open them.
+# Until 2026-08-13 it was not deployed anywhere at all, while the studio's
+# header linked to cutsheet.armeehn.workers.dev -- the tool's old name, on a
+# host that has never resolved. Sheets built by the studio were fine; there
+# was simply nowhere to open them.
 #
 # /handoff/<id> is the one dynamic route. Glitzy's "Open in Etsch"
 # stores the finished sheet as a file on its own engine and sends the browser
@@ -28,9 +28,10 @@ handle @etsch {
 	}
 
 	handle {
-		# Mirrors public/_headers, which only Cloudflare Pages reads. Keep the
-		# two in step: the CSP is what makes "Open project" decode its own
-		# data: URLs instead of fetching them.
+		# Mirrors etsch/public/_headers, which Cloudflare reads and Caddy does
+		# not. Keep the two in step: the CSP is what makes "Open project"
+		# decode its own data: URLs instead of fetching them, and a test
+		# asserts connect-src is still 'self' so that stays true.
 		header {
 			Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 			X-Content-Type-Options nosniff

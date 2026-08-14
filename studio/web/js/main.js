@@ -324,6 +324,8 @@ async function boot() {
   initFolds();
   on($('#files'), 'click', filesDialog);
   on($('#closefiles'), 'click', () => $('#filesdlg').close());
+  on($('#about'), 'click', () => $('#aboutdlg').showModal());
+  on($('#closeabout'), 'click', () => $('#aboutdlg').close());
   on($('#savefile'), 'click', saveProjectFile);
   on($('#loadfile'), 'click', () => $('#projfile').click());
   on($('#projfile'), 'change', (e) => {
