@@ -33,8 +33,10 @@ Etsch is useful on its own — most people who want to cut stickers do not want
 to datamosh anything first — so it deploys on its own and stands alone. The
 studio is what turns it into a pipeline.
 
-**Live:** [glitzy.ripostelabs.xyz](https://glitzy.ripostelabs.xyz) runs Etsch.
-The studio is self-hosted; see [studio/README.md](studio/README.md).
+**Hosting:** Etsch is ready to deploy to Cloudflare as static assets and is
+**not currently published** — `wrangler.toml` is configured, so one
+`npx wrangler deploy` publishes it whenever you want. The studio is self-hosted
+and stays on a private network by design; see [studio/README.md](studio/README.md).
 
 ---
 
@@ -90,12 +92,19 @@ setup, the operation reference, and a long list of things that will bite you.
 ## Deploying
 
 `npx wrangler deploy` publishes `etsch/public` to Cloudflare Workers as static
-assets and attaches `glitzy.ripostelabs.xyz`. There is no Worker code: with
-`assets` and no `main`, nothing runs per request. See [DEPLOY.md](DEPLOY.md).
+assets and attaches `glitzy.ripostelabs.xyz`. **Nothing is published yet** — the
+config is ready and the command has not been run. See [DEPLOY.md](DEPLOY.md).
 
-The studio deploys to its own host behind an authenticating reverse proxy. It
-accepts uploads and spawns subprocesses, so it does not belong on the open
-internet, and nothing in this repository puts it there.
+There is no Worker code: with `assets` and no `main`, nothing runs per request.
+Etsch makes no backend calls of any kind — the only `fetch()` in it is a
+relative, same-origin `/handoff/<id>`, a route that exists on the internal
+deployment and not on Cloudflare, where it 404s and is handled. So publishing
+Etsch exposes no server and reaches nothing private.
+
+The studio is the opposite and is treated as such. It accepts uploads and
+spawns subprocesses on them, so it stays on a private network behind an
+authenticating reverse proxy. Nothing in this repository puts it on the open
+internet, and no part of the public deployment talks to it.
 
 ## Licence and attribution
 
