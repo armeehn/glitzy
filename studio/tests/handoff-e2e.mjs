@@ -1,8 +1,8 @@
-/* The "Open in Cutsheet" handoff, driven in a real browser, end to end.
+/* The "Open in Etsch" handoff, driven in a real browser, end to end.
  *
  * Covers the seam nothing else can: the studio builds a sheet, opens the
  * leaving-interstitial in a NEW TAB, steers that tab to the finished file, and
- * Cutsheet -- the actual deployed tree, not a copy of it -- reads that file
+ * Etsch -- the actual deployed tree, not a copy of it -- reads that file
  * back through /handoff/<id> and renders the stickers.
  *
  * Run in LXC 114 from /root/uitest (node resolves playwright-core relative to
@@ -11,8 +11,8 @@
  *   node handoff-e2e.mjs
  *
  * The Authelia gate is NOT exercised here -- there is no session to test with.
- * This drives the engine on 127.0.0.1:8090 and Cutsheet from a local static
- * server that mirrors what Caddy does for cutsheet.hq: serve /var/www/cutsheet
+ * This drives the engine on 127.0.0.1:8090 and Etsch from a local static
+ * server that mirrors what Caddy does for etsch.hq: serve /var/www/etsch
  * and proxy /handoff/<id> to the engine's /api/file/<id>.
  */
 import { chromium } from 'playwright-core';
@@ -21,7 +21,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { join, extname } from 'node:path';
 
 const ENGINE = 'http://127.0.0.1:8090';
-const CUTSHEET_ROOT = process.env.CUTSHEET_ROOT || '/root/cutsheet-www';
+const ETSCH_ROOT = process.env.ETSCH_ROOT || '/root/etsch-www';
 const PORT = 8791;
 
 let pass = 0, fail = 0;
@@ -35,7 +35,7 @@ const TYPES = {
   '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml',
 };
 
-/* Caddy's cutsheet.hq site, in miniature. */
+/* Caddy's etsch.hq site, in miniature. */
 const site = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   const m = /^\/handoff\/([0-9a-f]{16})$/.exec(url.pathname);
@@ -46,11 +46,11 @@ const site = createServer(async (req, res) => {
     return res.end(body);
   }
   let rel = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-  let fp = join(CUTSHEET_ROOT, rel);
+  let fp = join(ETSCH_ROOT, rel);
   try {
     await stat(fp);
   } catch {
-    fp = join(CUTSHEET_ROOT, 'index.html'); // SPA fallback, as wrangler.toml does
+    fp = join(ETSCH_ROOT, 'index.html'); // SPA fallback, as wrangler.toml does
   }
   res.writeHead(200, {
     'Content-Type': TYPES[extname(fp)] || 'application/octet-stream',
@@ -72,15 +72,15 @@ page.on('pageerror', (e) => errors.push(String(e)));
 // -- the studio ------------------------------------------------------------
 await page.goto(ENGINE + '/', { waitUntil: 'networkidle' });
 
-ok('the header Cutsheet link is filled in from config, not hard-coded',
-  await page.getAttribute('#cutsheet-link', 'href') === 'https://cutsheet.hq.ripostelabs.xyz/',
-  await page.getAttribute('#cutsheet-link', 'href'));
+ok('the header Etsch link is filled in from config, not hard-coded',
+  await page.getAttribute('#etsch-link', 'href') === 'https://etsch.hq.ripostelabs.xyz/',
+  await page.getAttribute('#etsch-link', 'href'));
 ok('the header link is visible once a destination exists',
-  await page.isVisible('#cutsheet-link'));
+  await page.isVisible('#etsch-link'));
 
 // A starter chain, cooked, then kept -- the button is dead until the tray has
 // something in it.
-ok('Open in Cutsheet is disabled with an empty tray',
+ok('Open in Etsch is disabled with an empty tray',
   await page.isDisabled('#ex-open'));
 
 await page.evaluate(async () => {
@@ -115,7 +115,7 @@ const wired = await page.evaluate(async () => {
   return mod.S.proj.tray.length;
 });
 ok('two stickers are on the sheet', wired === 2, wired);
-ok('Open in Cutsheet is enabled once the tray has something in it',
+ok('Open in Etsch is enabled once the tray has something in it',
   await page.isEnabled('#ex-open'));
 
 // -- the new tab -----------------------------------------------------------
@@ -124,7 +124,7 @@ const [popup] = await Promise.all([
   page.click('#ex-open'),
 ]);
 ok('clicking it opens a new tab', !!popup);
-ok('the new tab is the leaving-Glitchsheet warning, not Cutsheet itself',
+ok('the new tab is the leaving-Glitzy warning, not Etsch itself',
   new URL(popup.url()).pathname === '/leaving.html', popup.url());
 
 await popup.waitForFunction(() => new URLSearchParams(location.search).has('id'), null,
@@ -136,12 +136,12 @@ ok('it says how many stickers are on it', params.get('n') === '2', params.get('n
 
 await popup.waitForSelector('#go[href]');
 const warnText = await popup.textContent('.card');
-ok('the tab warns you are leaving Glitchsheet',
-  /You are leaving Glitchsheet/i.test(warnText), warnText.slice(0, 60));
+ok('the tab warns you are leaving Glitzy',
+  /You are leaving Glitzy/i.test(warnText), warnText.slice(0, 60));
 ok('it names the destination host',
-  (await popup.textContent('#f-dest')) === 'cutsheet.hq.ripostelabs.xyz',
+  (await popup.textContent('#f-dest')) === 'etsch.hq.ripostelabs.xyz',
   await popup.textContent('#f-dest'));
-ok('it says Cutsheet is a separate application', /separate application/i.test(warnText));
+ok('it says Etsch is a separate application', /separate application/i.test(warnText));
 ok('it offers the file as a download instead',
   (await popup.getAttribute('#dl', 'href')) === `/api/file/${fileId}?dl=1`,
   await popup.getAttribute('#dl', 'href'));
@@ -151,37 +151,37 @@ ok('it offers the file as a download instead',
 // resolve a name. The href IS the contract -- it is what the click navigates
 // to, and what the status bar shows before anyone commits to it.
 const target = await popup.getAttribute('#go', 'href');
-ok('Continue goes to Cutsheet carrying the sheet id',
-  target === `https://cutsheet.hq.ripostelabs.xyz/#handoff=${fileId}`, target);
+ok('Continue goes to Etsch carrying the sheet id',
+  target === `https://etsch.hq.ripostelabs.xyz/#handoff=${fileId}`, target);
 ok('nothing was navigated before the user asked',
   new URL(popup.url()).host === new URL(ENGINE).host, popup.url());
 
-// -- Cutsheet's side, on the real deployed tree ----------------------------
+// -- Etsch's side, on the real deployed tree ----------------------------
 const cs = await ctx.newPage();
 const csErrors = [];
 cs.on('pageerror', (e) => csErrors.push(String(e)));
 await cs.goto(`http://127.0.0.1:${PORT}/#handoff=${fileId}`, { waitUntil: 'networkidle' });
-await cs.waitForFunction(() => window.cutsheet && window.cutsheet.doc.items.length > 0,
+await cs.waitForFunction(() => window.etsch && window.etsch.doc.items.length > 0,
   null, { timeout: 20000 });
 
 const loaded = await cs.evaluate(() => ({
-  items: window.cutsheet.doc.items.length,
-  name: window.cutsheet.doc.name,
-  machine: window.cutsheet.doc.machine,
-  cuts: window.cutsheet.doc.items.map((i) => [i.cut.mode, i.cut.offset]),
-  pageW: window.cutsheet.doc.page.w,
+  items: window.etsch.doc.items.length,
+  name: window.etsch.doc.name,
+  machine: window.etsch.doc.machine,
+  cuts: window.etsch.doc.items.map((i) => [i.cut.mode, i.cut.offset]),
+  pageW: window.etsch.doc.page.w,
   hash: location.hash,
   // Toasts are appended to #toasts and removed after a few seconds, so read
   // this in the same pass as the doc state, not later.
   toast: document.querySelector('#toasts .toast')?.textContent || '',
 }));
-ok('Cutsheet loaded both stickers from the handoff', loaded.items === 2, loaded);
-ok('the sheet kept its name', /e2e|Glitchsheet|untitled/i.test(loaded.name), loaded.name);
+ok('Etsch loaded both stickers from the handoff', loaded.items === 2, loaded);
+ok('the sheet kept its name', /e2e|Glitzy|untitled/i.test(loaded.name), loaded.name);
 ok('it is a letter sheet', Math.abs(loaded.pageW - 215.9) < 0.01, loaded.pageW);
 ok('the contour cuts survived', loaded.cuts.every(([m, o]) => m === 'contour' && o === 0),
   loaded.cuts);
 ok('the handoff id is cleaned out of the URL', loaded.hash === '', loaded.hash);
-ok('it says where the sheet came from', /Glitchsheet/i.test(loaded.toast), loaded.toast);
+ok('it says where the sheet came from', /Glitzy/i.test(loaded.toast), loaded.toast);
 
 // The artwork has to actually be there, not just the item records.
 const drawn = await cs.evaluate(() => {
@@ -198,7 +198,7 @@ ok('the stickers are actually drawn on the canvas', drawn.ink > 5000, drawn);
 const again = await ctx.newPage();
 await again.goto(`http://127.0.0.1:${PORT}/`, { waitUntil: 'networkidle' });
 await again.waitForTimeout(800);
-const restored = await again.evaluate(() => window.cutsheet.doc.items.length);
+const restored = await again.evaluate(() => window.etsch.doc.items.length);
 ok('a plain visit restores the autosave instead of re-importing', restored === 2, restored);
 
 // A bad handoff id must fail loudly and leave the sheet alone.
@@ -206,7 +206,7 @@ const bad = await ctx.newPage();
 await bad.goto(`http://127.0.0.1:${PORT}/#handoff=deadbeefdeadbeef`, { waitUntil: 'networkidle' });
 await bad.waitForTimeout(1200);
 const badState = await bad.evaluate(() => ({
-  items: window.cutsheet.doc.items.length,
+  items: window.etsch.doc.items.length,
   // Toasts are appended to #toasts and removed after a few seconds, so read
   // this in the same pass as the doc state, not later.
   toast: document.querySelector('#toasts .toast')?.textContent || '',
@@ -215,7 +215,7 @@ ok('an unknown sheet id is reported, not swallowed', /no longer available|not th
   badState.toast);
 
 ok('no page errors in the studio', errors.length === 0, errors);
-ok('no page errors in Cutsheet', csErrors.length === 0, csErrors);
+ok('no page errors in Etsch', csErrors.length === 0, csErrors);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 await browser.close();

@@ -1,0 +1,115 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      # The TAP reporter is pinned because Node 24 defaults to the spec
+      # reporter even off a TTY, which would change the summary format.
+      - name: Run tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test -- --test-reporter=tap 2>&1 | tee test-output.txt
+
+      # The canvas-backed half of the suite skips itself when @napi-rs/canvas
+      # is unavailable, which would silently drop contour tracing and the
+      # PNG/PDF writers from coverage while still reporting green.
+      - name: Assert the canvas suite actually ran
+        shell: bash
+        run: |
+          if grep -q "@napi-rs/canvas is not installed" test-output.txt; then
+            echo "::error::@napi-rs/canvas missing — the canvas tests were skipped"
+            exit 1
+          fi
+          grep -E "^# (tests|pass|fail)" test-output.txt
+
+  syntax:
+    name: module syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Parse every browser module
+        run: |
+          for f in etsch/public/js/*.js studio/web/js/*.js; do
+            node --check "$f" || exit 1
+          done
+          echo "all modules parse"
+
+  studio:
+    name: studio (python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install numpy pillow
+
+      # The studio's real suite (studio/tests/test_backend.py) drives actual
+      # ffglitch binaries on purpose -- a mocked ffedit passes every trap that
+      # has ever cost time here, so mocking it would make the suite worthless.
+      # ffglitch is not on a GitHub runner, so CI checks what it honestly can:
+      # every module compiles and imports, which is what catches a rename or a
+      # bad edit. The full suite runs on the engine host.
+      - name: Compile every module
+        run: python3 -m compileall -q studio/glitzyd studio/tests
+
+      - name: Import the package
+        working-directory: studio
+        run: |
+          python3 - <<'PY'
+          import glitzyd
+          from glitzyd import clip, exporters, ff, graph, jobs, layers, nputil, palettes, server, store
+          from glitzyd.ops import codec, colourops, geom, matte, pixel, source, timeops
+          print('glitzyd imports clean')
+          PY
+
+  deploy-config:
+    name: cloudflare config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # Catches a broken wrangler.toml or a missing asset directory without
+      # needing Cloudflare credentials.
+      - name: Validate the Workers build
+        run: npx wrangler deploy --dry-run
+        env:
+          CI: '1'
+          WRANGLER_SEND_METRICS: 'false'

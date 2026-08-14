@@ -10,9 +10,9 @@
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
-MSG="${1:-update glitchsheet studio}"
-REPO=/home/user/glitchsheet
-TAR=/tmp/glitchsheet-sync.tar
+MSG="${1:-update glitzy studio}"
+REPO=/home/user/glitzy
+TAR=/tmp/glitzy-sync.tar
 
 tar -C "$SRC" --exclude=__pycache__ --exclude='*.pyc' --exclude=scratch \
     -cf "$TAR" .
@@ -27,7 +27,7 @@ cd $REPO
 find . -mindepth 1 -maxdepth 1 -not -name .git -exec rm -rf {} +
 tar -xf $TAR -C $REPO
 git add -A
-git -c user.name='Glitchsheet' -c user.email='glitchsheet@hq' \
+git -c user.name='Glitzy' -c user.email='glitzy@hq' \
     commit -q -m \"\$(printf '%s' \"$MSG\")\" || echo 'nothing to commit'
 git --no-pager log --oneline -3
 git status --short | head

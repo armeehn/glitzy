@@ -1,0 +1,25 @@
+{
+  "name": "glitzy",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Glitch-art chain studio and the print-and-cut sheet layout tool it hands off to. This manifest covers Etsch, the browser half; the studio is Python and has no npm dependencies.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "npx --yes serve etsch/public -l 5173",
+    "check": "node --check etsch/public/js/main.js",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "test": "node --test \"etsch/tests/**/*.test.mjs\"",
+    "test:studio": "python3 studio/tests/test_backend.py",
+    "preview": "node etsch/tests/preview.mjs docs"
+  },
+  "devDependencies": {
+    "@napi-rs/canvas": "^1.0.3",
+    "jsdom": "^30.0.1",
+    "wrangler": "^4.86.0"
+  }
+}

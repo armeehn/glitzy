@@ -163,7 +163,7 @@ window.addEventListener('pagehide', () => {
       loc.pathname + loc.search + stripHandoff(loc.hash));
     try {
       await importHandoff(handoff);
-      toast('Opened the sheet handed over from Glitchsheet', 'ok');
+      toast('Opened the sheet handed over from Glitzy', 'ok');
     } catch (err) {
       toast(err.message, 'error');
     }
@@ -181,4 +181,4 @@ window.addEventListener('pagehide', () => {
 })();
 
 // Expose a small surface for debugging in the console.
-window.cutsheet = { doc, actions, project, commit, notify, fitToView };
+window.etsch = { doc, actions, project, commit, notify, fitToView };

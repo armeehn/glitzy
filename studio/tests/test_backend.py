@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Backend tests for the Glitchsheet engine.
+"""Backend tests for the Glitzy engine.
 
 Runs real chains through real ffglitch binaries -- no mocks. A mocked ffedit
 would have passed every one of the traps that actually cost time in v1 (the
@@ -20,14 +20,14 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
 DATA = tempfile.mkdtemp(prefix="gs-test-")
-os.environ["GLITCHSHEET_DATA"] = DATA
-os.environ.setdefault("GLITCHSHEET_RACK", os.path.join(os.path.dirname(HERE), "rack"))
+os.environ["GLITZY_DATA"] = DATA
+os.environ.setdefault("GLITZY_RACK", os.path.join(os.path.dirname(HERE), "rack"))
 
 import numpy as np  # noqa: E402
 
-from glitchd import exporters, ff, graph, layers, nputil, ops, store  # noqa: E402
-from glitchd.clip import Clip, ClipTooBig  # noqa: E402
-from glitchd.graph import ChainError  # noqa: E402
+from glitzyd import exporters, ff, graph, layers, nputil, ops, store  # noqa: E402
+from glitzyd.clip import Clip, ClipTooBig  # noqa: E402
+from glitzyd.graph import ChainError  # noqa: E402
 
 PASS, FAIL = [], []
 
@@ -584,7 +584,7 @@ body, ct, name, overflow = exporters.export_sheet(
     [{"hash": sticker["hash"], "frame": 0, "mm": 50, "name": "one"},
      {"hash": sticker["hash"], "frame": 1, "mm": 50, "name": "two"}], "cricut", 300)
 sheet = json.loads(body)
-check("sheet declares the format cutsheet expects", sheet["format"] == "cutsheet/1")
+check("sheet declares the format etsch expects", sheet["format"] == "etsch/1")
 check("sheet has both stickers", len(sheet["doc"]["items"]) == 2)
 check("sheet embeds the artwork as a data url",
       sheet["images"][0]["dataUrl"].startswith("data:image/png;base64,"))
@@ -627,7 +627,7 @@ check("project deletes", store.load_project(doc["id"]) is None)
 # A project document is portable: it goes out to a file and comes back in.
 # coerce_project is what a save and an import share, so an imported file
 # cannot carry anything a save could not -- both end up in the evaluator.
-from glitchd.server import coerce_project  # noqa: E402
+from glitzyd.server import coerce_project  # noqa: E402
 
 exported = coerce_project({"name": "portable", "layers": [{"name": "Base",
                                                            "chain": CHAIN}]})

@@ -1,4 +1,4 @@
-// The Glitchsheet handoff: `#handoff=<id>` opens a sheet built by another app.
+// The Glitzy handoff: `#handoff=<id>` opens a sheet built by another app.
 //
 // The interesting cases are all failures, because every one of them looked
 // like a working import while it was broken:
@@ -8,7 +8,7 @@
 //   * the plain Cloudflare deployment, which has no /handoff/ route at all and
 //     answers 404 — that must degrade to a toast, not a blank sheet;
 //   * an expired forward-auth session, which answers a login *page* with HTTP
-//     200, so the JSON parse fails and "not a Cutsheet project" would send
+//     200, so the JSON parse fails and "not a Etsch project" would send
 //     someone hunting a file that is perfectly fine.
 //
 //   npm test
@@ -63,13 +63,13 @@ const { doc } = state;
 const PNG = readFileSync(join(import.meta.dirname, 'fixtures/star.png'));
 const ID = 'a1b2c3d4e5f60718';
 
-/** A sheet in exactly the shape Glitchsheet's exporters.py writes. */
+/** A sheet in exactly the shape Glitzy's exporters.py writes. */
 function sheetJson() {
   return JSON.stringify({
-    format: 'cutsheet/1',
+    format: 'etsch/1',
     savedAt: '2026-08-13T00:00:00.000Z',
     doc: {
-      name: 'Glitchsheet 2026-08-13',
+      name: 'Glitzy026-08-13',
       unit: 'in',
       page: { preset: 'letter', w: 215.9, h: 279.4, orientation: 'portrait' },
       bleed: 3.175,
@@ -182,7 +182,7 @@ test('handoff: a network failure is reported as one', async () => {
 
 test('handoff: a sheet in the wrong format is still refused by the loader', async () => {
   await assert.rejects(
-    () => handoff.importHandoff(ID, async () => reply(JSON.stringify({ format: 'cutsheet/2', doc: {} }))),
+    () => handoff.importHandoff(ID, async () => reply(JSON.stringify({ format: 'etsch/2', doc: {} }))),
     /Unrecognised project format/
   );
 });

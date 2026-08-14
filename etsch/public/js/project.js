@@ -1,9 +1,19 @@
-// Project persistence: IndexedDB autosave plus explicit .cutsheet file I/O.
+// Project persistence: IndexedDB autosave plus explicit .etsch file I/O.
 import { doc, images, addImage, createItem, defaultDoc, notify, resetHistory, setDocData } from './state.js';
 
+// Deliberately still 'cutsheet', from before this tool was renamed to Etsch.
+// An IndexedDB name is not cosmetic: renaming it opens a *different*, empty
+// database, so everyone with a sheet in progress would come back to a blank
+// one and no error anywhere. The old database keeps the old name.
 const DB_NAME = 'cutsheet';
 const STORE = 'state';
 const KEY = 'current';
+
+// The on-disk project format. `cutsheet/1` is the same document under the tool's
+// former name, so it is read but never written — sheets saved before the rename
+// keep opening, and a sheet saved now is `etsch/1` everywhere.
+const FORMAT = 'etsch/1';
+const FORMATS_READ = new Set([FORMAT, 'cutsheet/1']);
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -57,7 +67,7 @@ function docPayload() {
 export async function autosave() {
   try {
     await idbPut({
-      format: 'cutsheet/1',
+      format: FORMAT,
       savedAt: Date.now(),
       doc: docPayload(),
       images: [...images.values()].map((im) => ({
@@ -132,7 +142,7 @@ async function applyPayload(payload) {
 
 export async function restoreAutosave() {
   const payload = await idbGet();
-  if (!payload || payload.format !== 'cutsheet/1' || !payload.doc) return false;
+  if (!payload || !FORMATS_READ.has(payload.format) || !payload.doc) return false;
   if (!(payload.doc.items || []).length && !(payload.images || []).length) return false;
   await applyPayload(payload);
   return true;
@@ -165,7 +175,7 @@ export async function serializeProject() {
     });
   }
   return new Blob(
-    [JSON.stringify({ format: 'cutsheet/1', savedAt: new Date().toISOString(), doc: docPayload(), images: imgs }, null, 1)],
+    [JSON.stringify({ format: FORMAT, savedAt: new Date().toISOString(), doc: docPayload(), images: imgs }, null, 1)],
     { type: 'application/json' }
   );
 }
@@ -176,9 +186,9 @@ export async function loadProjectFile(file) {
   try {
     payload = JSON.parse(text);
   } catch {
-    throw new Error('That file is not a Cutsheet project.');
+    throw new Error('That file is not an Etsch project.');
   }
-  if (payload.format !== 'cutsheet/1') throw new Error('Unrecognised project format.');
+  if (!FORMATS_READ.has(payload.format)) throw new Error('Unrecognised project format.');
   await applyPayload(payload);
   await autosave();
 }

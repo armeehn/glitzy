@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Leaving Glitzy</title>
+<link rel="stylesheet" href="/css/studio.css">
+<link rel="stylesheet" href="/css/leaving.css">
+</head>
+<body class="leaving">
+
+<main class="card" id="card">
+  <p class="eyebrow" id="state">Packing your sheet</p>
+  <h1><span class="warn" aria-hidden="true">&#9888;</span> You are leaving Glitzy</h1>
+
+  <p class="lede" id="lede">
+    Your stickers are being packed onto a cut sheet. This tab will hand the
+    finished sheet to Etsch.
+  </p>
+
+  <dl class="facts" id="facts" hidden>
+    <div><dt>Sheet</dt><dd id="f-name">—</dd></div>
+    <div><dt>Stickers</dt><dd id="f-count">—</dd></div>
+    <div><dt>Size</dt><dd id="f-bytes">—</dd></div>
+    <div><dt>Destination</dt><dd id="f-dest" class="dest">—</dd></div>
+  </dl>
+
+  <p class="note" id="note" hidden>
+    Etsch is a <b>separate application</b>. Glitzy does not control it
+    and cannot see what you do there. Continuing sends this one sheet — the
+    artwork and its cut lines — and nothing else from this studio.
+  </p>
+
+  <p class="err" id="err" hidden></p>
+
+  <div class="actions">
+    <!-- A real link, not a button: the destination belongs in the status bar
+         where anyone can read it before they commit to it. -->
+    <a class="btn primary" id="go" role="button" aria-disabled="true">Continue to Etsch &rarr;</a>
+    <button class="btn" id="stay">Stay in Glitzy</button>
+    <a class="btn ghost" id="dl" href="#" hidden download>Download the file instead</a>
+  </div>
+</main>
+
+<script type="module" src="/js/leaving.js"></script>
+</body>
+</html>

@@ -35,7 +35,7 @@ page.on('requestfailed', (r) => failedRequests.push(r.url() + ' ' + r.failure()?
 try {
   // ---------------------------------------------------------------- load --
   await page.goto(BASE, { waitUntil: 'networkidle', timeout: 30000 });
-  check('studio loads', await page.title() === 'Glitchsheet');
+  check('studio loads', await page.title() === 'Glitzy');
   check('ES modules ran without error', consoleErrors.length === 0,
     consoleErrors.join(' | '));
   check('no request failed', failedRequests.length === 0, failedRequests.join(' | '));
@@ -134,7 +134,7 @@ try {
   check('sheet export unlocks once something is kept',
     !(await page.locator('#ex-sheet').isDisabled()));
 
-  // Build the sheet and confirm it is really a cutsheet/1 document.
+  // Build the sheet and confirm it is really a etsch/1 document.
   const sheet = await page.evaluate(async () => {
     const start = await fetch('/api/export', {
       method: 'POST',
@@ -157,7 +157,7 @@ try {
     }
     return { error: 'timed out' };
   });
-  check('sheet builds through the API', sheet.format === 'cutsheet/1',
+  check('sheet builds through the API', sheet.format === 'etsch/1',
     JSON.stringify(sheet).slice(0, 200));
   check('sheet carries the artwork', sheet.images === 1, sheet.images);
   check('a matted sticker cuts on its contour at offset 0',
@@ -657,8 +657,8 @@ try {
   await page.locator('#savefile').click();
   const projFile = await projDl;
   const projName = projFile ? await projFile.suggestedFilename() : '';
-  check('the project saves as a .glitchsheet.json',
-    /\.glitchsheet\.json$/.test(projName), projName);
+  check('the project saves as a .glitzy.json',
+    /\.glitzy\.json$/.test(projName), projName);
   const projPath = '/tmp/uitest-' + (projName || 'x.json');
   if (projFile) await projFile.saveAs(projPath);
   await page.locator('#closeopen').click();
@@ -692,12 +692,12 @@ try {
 
   await page.setViewportSize({ width: 1600, height: 950 });
   await page.waitForTimeout(300);
-  await page.screenshot({ path: '/tmp/glitchsheet-v2.png' });
+  await page.screenshot({ path: '/tmp/glitzy-v2.png' });
   check('no console errors during the whole session',
     consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
 } catch (e) {
   check('test run completed', false, e.message);
-  await page.screenshot({ path: '/tmp/glitchsheet-v2-fail.png' }).catch(() => {});
+  await page.screenshot({ path: '/tmp/glitzy-v2-fail.png' }).catch(() => {});
 } finally {
   await browser.close();
 }

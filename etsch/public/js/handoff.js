@@ -1,6 +1,6 @@
 // Accept a sheet handed over by another app on the same deployment.
 //
-// A companion app (Glitchsheet) builds a `cutsheet/1` project server-side and
+// A companion app (Glitzy) builds a `etsch/1` project server-side and
 // sends the browser here with `#handoff=<file id>`. We fetch that one sheet
 // from a fixed same-origin path and open it with the ordinary project loader.
 //
@@ -60,7 +60,7 @@ export async function importHandoff(id, fetchImpl = (...a) => fetch(...a)) {
     throw new Error('Could not reach the app that sent this sheet.');
   }
   if (res.status === 404) {
-    throw new Error('That sheet is no longer available, or this Cutsheet is not '
+    throw new Error('That sheet is no longer available, or this Etsch is not '
       + 'the one it was sent to.');
   }
   if (!res.ok) throw new Error(`The sheet could not be fetched (HTTP ${res.status}).`);
@@ -68,7 +68,7 @@ export async function importHandoff(id, fetchImpl = (...a) => fetch(...a)) {
   const text = await res.text();
   // A forward-auth gate answers an expired session with a login page and a
   // 200, so a JSON parse error here is far more likely to be HTML than a
-  // corrupt sheet. Say so, rather than "not a Cutsheet project".
+  // corrupt sheet. Say so, rather than "not a Etsch project".
   if (/^\s*</.test(text)) {
     throw new Error('The sheet came back as a web page, not a project — your '
       + 'session may have expired. Reload and try again.');

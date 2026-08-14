@@ -28,7 +28,7 @@ if (JSDOM) {
   const html = readFileSync(join(import.meta.dirname, '../public/index.html'), 'utf8');
 
   const dom = new JSDOM(html, {
-    url: 'https://cutsheet.test/',
+    url: 'https://etsch.test/',
     // The page's only script is type="module", which jsdom does not execute
     // even in this mode, so the modules are imported by hand below against the
     // parsed document. runScripts is still set so anything inline would run.
