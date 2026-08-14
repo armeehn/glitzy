@@ -5,6 +5,7 @@ import { attachInteractions, isTyping } from './interact.js';
 import { initUi, sync, syncLight, toast, saveProject, openExport, importFiles } from './ui.js';
 import * as actions from './actions.js';
 import * as project from './project.js';
+import { importHandoff, pendingHandoff, stripHandoff } from './handoff.js';
 import { MM_PER_IN } from './units.js';
 
 const canvas = document.getElementById('canvas');
@@ -150,11 +151,29 @@ window.addEventListener('pagehide', () => {
 // ---------------------------------------------------------------------------
 
 (async () => {
-  try {
-    const restored = await project.restoreAutosave();
-    if (restored) toast('Restored your last sheet', 'ok');
-  } catch (err) {
-    console.warn('restore failed', err);
+  // A sheet handed over by another app wins over the autosave: someone just
+  // asked for *this* sheet, and restoring theirs first would only flash the
+  // old one on screen before it was replaced.
+  const loc = window.location;
+  const handoff = pendingHandoff(loc.hash);
+  if (handoff) {
+    // Out of the URL before the await, so a reload during a slow fetch does
+    // not import it a second time over whatever the user has since done.
+    window.history.replaceState(null, '',
+      loc.pathname + loc.search + stripHandoff(loc.hash));
+    try {
+      await importHandoff(handoff);
+      toast('Opened the sheet handed over from Glitchsheet', 'ok');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  } else {
+    try {
+      const restored = await project.restoreAutosave();
+      if (restored) toast('Restored your last sheet', 'ok');
+    } catch (err) {
+      console.warn('restore failed', err);
+    }
   }
   fitToView();
   sync();
