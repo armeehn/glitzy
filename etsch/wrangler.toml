@@ -1,0 +1,16 @@
+# Cloudflare Workers static-asset deployment.
+#   npx wrangler deploy          -> https://cutsheet.<your-subdomain>.workers.dev
+#
+# Everything runs in the browser, so there is no server code and no data ever
+# leaves the visitor's machine.
+
+name = "cutsheet"
+compatibility_date = "2025-06-01"
+
+[assets]
+directory = "./public"
+# Unknown paths fall back to the single page rather than a 404.
+not_found_handling = "single-page-application"
+
+[observability]
+enabled = true

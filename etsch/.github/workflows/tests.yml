@@ -1,0 +1,86 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      # The TAP reporter is pinned because Node 24 defaults to the spec
+      # reporter even off a TTY, which would change the summary format.
+      - name: Run tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test -- --test-reporter=tap 2>&1 | tee test-output.txt
+
+      # The canvas-backed half of the suite skips itself when @napi-rs/canvas
+      # is unavailable, which would silently drop contour tracing and the
+      # PNG/PDF writers from coverage while still reporting green.
+      - name: Assert the canvas suite actually ran
+        shell: bash
+        run: |
+          if grep -q "@napi-rs/canvas is not installed" test-output.txt; then
+            echo "::error::@napi-rs/canvas missing — the canvas tests were skipped"
+            exit 1
+          fi
+          grep -E "^# (tests|pass|fail)" test-output.txt
+
+  syntax:
+    name: module syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Parse every browser module
+        run: |
+          for f in public/js/*.js; do
+            node --check "$f" || exit 1
+          done
+          echo "all modules parse"
+
+  deploy-config:
+    name: cloudflare config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # Catches a broken wrangler.toml or a missing asset directory without
+      # needing Cloudflare credentials.
+      - name: Validate the Workers build
+        run: npx wrangler deploy --dry-run
+        env:
+          CI: '1'
+          WRANGLER_SEND_METRICS: 'false'

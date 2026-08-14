@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cutsheet render check</title>
+<link rel="stylesheet" href="../public/css/style.css">
+<style>
+  body { display: block; padding: 12px; overflow: auto; }
+  #wrap { width: 620px; height: 820px; position: relative; background: #14161a; border: 1px solid #31353d; border-radius: 8px; }
+  #report { font: 12px/1.6 ui-monospace, monospace; color: #e6e8ec; padding: 12px 0 0; white-space: pre-wrap; }
+  .pass { color: #26c281; }
+  .fail { color: #ff5f56; }
+  main { display: flex; gap: 16px; align-items: flex-start; }
+</style>
+</head>
+<body>
+<main>
+  <div id="wrap"><canvas id="canvas"></canvas></div>
+  <div id="report">running…</div>
+</main>
+
+<script type="module">
+// Renders a realistic sheet through the actual app modules so the browser
+// drawing path (OffscreenCanvas tracing, guides, marks, cut lines, handles)
+// can be eyeballed in a screenshot. Not part of the deployed site.
+import * as state from '../public/js/state.js';
+import * as actions from '../public/js/actions.js';
+import * as cutpaths from '../public/js/cutpaths.js';
+import { attach, fitToView, draw } from '../public/js/render.js';
+
+const lines = [];
+let failures = 0;
+const check = (label, ok, detail = '') => {
+  if (!ok) failures++;
+  lines.push(`${ok ? '  ok  ' : ' FAIL '} ${label}${detail ? ` — ${detail}` : ''}`);
+};
+
+async function fileFrom(path, type = 'image/png') {
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`${path}: ${res.status}`);
+  const blob = await res.blob();
+  return new File([blob], path.split('/').pop(), { type });
+}
+
+try {
+  const { doc } = state;
+  doc.marks.style = 'crop';
+
+  const star = await actions.loadImageFile(await fileFrom('fixtures/star.png'));
+  const solid = await actions.loadImageFile(await fileFrom('fixtures/blob-on-white.png'));
+  check('transparent PNG detected as having alpha', star.hasAlpha === true);
+  check('opaque PNG detected as having no alpha', solid.hasAlpha === false);
+
+  actions.placeImages([star.id, solid.id, star.id]);
+  check('three items placed', doc.items.length === 3, `got ${doc.items.length}`);
+
+  const [a, b, c] = doc.items;
+  check('transparent art defaults to a contour cut', a.cut.mode === 'contour', a.cut.mode);
+  check('opaque art defaults to a rectangle cut', b.cut.mode === 'box', b.cut.mode);
+
+  a.cx = 60; a.cy = 60; a.w = 55; a.h = 55; a.cut.offset = 3; a.cut.minArea = 0.1;
+  b.cx = 150; b.cy = 60; b.w = 55; b.h = 44; b.cut.mode = 'contour'; b.cut.key = 'bg'; b.cut.offset = 3; b.cut.minArea = 0.2;
+  c.cx = 105; c.cy = 170; c.w = 70; c.h = 70; c.rot = 18; c.cut.mode = 'box'; c.cut.offset = 4; c.cut.radius = 6;
+
+  const t0 = performance.now();
+  await cutpaths.flushContours(doc.items);
+  const elapsed = Math.round(performance.now() - t0);
+
+  check('contour traced for the transparent star', a.contour && !a.contour.degenerate, `paths=${a.contour?.paths.length}`);
+  check('star keeps its detached dot as a second path', a.contour?.paths.length === 2, `paths=${a.contour?.paths.length}`);
+  check('background key traced the opaque art', b.contour && !b.contour.degenerate, `paths=${b.contour?.paths.length}`);
+  check('tracing is responsive', elapsed < 2500, `${elapsed}ms for 2 traces`);
+
+  const cutA = cutpaths.itemCutPaths(a);
+  check('cut paths are finite', cutA.every((p) => Number.isFinite(p.start.x) && p.segs.every((s) => Number.isFinite(s.p.x))));
+
+  const boxed = cutpaths.itemCutPaths(c);
+  check('rotated rectangle cut produced a path', boxed.length === 1);
+
+  const warnings = actions.layoutWarnings();
+  check('no layout errors on a tidy sheet', !warnings.some((w) => w.level === 'error'), JSON.stringify(warnings.map((w) => w.text)));
+
+  state.setSelection([c.id]);
+
+  const canvas = document.getElementById('canvas');
+  attach(canvas);
+  fitToView();
+  draw();
+  check('canvas has pixels', canvas.width > 100 && canvas.height > 100, `${canvas.width}x${canvas.height}`);
+
+  // Sample the canvas: the sheet should be light and cut lines magenta.
+  const ctx = canvas.getContext('2d');
+  const px = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  let white = 0;
+  let magenta = 0;
+  for (let i = 0; i < px.length; i += 4) {
+    const [r, g, bl] = [px[i], px[i + 1], px[i + 2]];
+    if (r > 240 && g > 240 && bl > 240) white++;
+    if (r > 170 && g < 90 && bl > 90 && bl < 190) magenta++;
+  }
+  check('sheet is drawn', white > 20000, `${white} light pixels`);
+  check('cut lines are drawn', magenta > 500, `${magenta} magenta pixels`);
+} catch (err) {
+  failures++;
+  lines.push(` FAIL exception — ${err && err.stack ? err.stack : err}`);
+}
+
+document.getElementById('report').innerHTML =
+  `<span class="${failures ? 'fail' : 'pass'}">${failures ? `${failures} CHECK(S) FAILED` : 'ALL CHECKS PASSED'}</span>\n\n` +
+  lines.join('\n');
+document.title = failures ? `FAIL (${failures})` : 'PASS';
+</script>
+</body>
+</html>
