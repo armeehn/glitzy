@@ -1,0 +1,17 @@
+# glitzy.hq.ripostelabs.xyz -> the studio engine on 10.0.1.178:8090
+# gated by Authelia forward-auth
+#
+# glitchsheet.hq is the studio's pre-rename name, kept answering on purpose so
+# no bookmark breaks. Both names reach the same engine; neither redirects to
+# the other.
+#
+# This must stay a proxy to the engine rather than anything static: the studio
+# is a server precisely because the chain cache lives there, and every /api/
+# route the UI uses is on the same origin.
+@glitzy host glitzy.hq.ripostelabs.xyz glitchsheet.hq.ripostelabs.xyz
+handle @glitzy {
+	import authelia
+	reverse_proxy 10.0.1.178:8090 {
+		header_up Host {host}
+	}
+}
