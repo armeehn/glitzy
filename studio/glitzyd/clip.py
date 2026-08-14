@@ -30,7 +30,14 @@ from PIL import Image
 # 12M pixels x ~75 B ~= 900 MB, inside the unit's MemoryMax=1400M with room
 # for the interpreter and the page cache. Keep this in step with MAX_WORKERS
 # in jobs.py: the budget is per render, and renders run one at a time.
-MAX_PIXELS = 12_000_000  # n * w * h; 480x480x48 fits, 480x480x60 does not
+#
+# Tunable per host, because the right value is a property of the machine, not
+# of the code: this default is sized for a 2 GB box. On a larger host raise
+# GLITZY_MAX_PIXELS and the unit's MemoryMax together, budgeting ~75 B per
+# pixel plus ~400 MB of headroom, and divide by GLITZY_MAX_WORKERS because the
+# budget is per render. Raising this alone does not let the engine survive
+# more work -- it only stops it refusing work it will then be SIGKILLed for.
+MAX_PIXELS = int(os.environ.get("GLITZY_MAX_PIXELS") or 12_000_000)  # n * w * h
 THUMB_W = 200
 
 

@@ -26,6 +26,11 @@ from . import exporters, ff, graph, jobs, layers as layermod, ops, store
 from .graph import ChainError
 
 PORT = int(os.environ.get("GLITZY_PORT", "8090"))
+# The engine has no authentication of its own -- it is designed to sit behind a
+# proxy that provides one. The default stays 0.0.0.0 because that is what the
+# existing private deployment expects, but any host where the proxy is local,
+# or which is reachable from somewhere untrusted, should set this to 127.0.0.1.
+HOST = os.environ.get("GLITZY_HOST") or "0.0.0.0"
 WEB_DIR = os.environ.get("GLITZY_WEB", "/opt/glitzy/web")
 MAX_UPLOAD = 400 * 1024 * 1024
 VERSION = "2.1"
@@ -115,8 +120,15 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_bytes(FAVICON, "image/png", "public, max-age=86400")
 
         if p == "/api/health":
+            # `ffglitch` is probed by running the binary, not asserted. It used
+            # to be the literal "0.10.2", so health answered ok on a host where
+            # ffedit could not start at all -- and the first symptom was a
+            # render failing minutes later, far from the cause. `ok` now means
+            # the engine can actually do its job.
+            ffg = ff.version()
             return self.send_json({
-                "ok": True, "version": VERSION, "ffglitch": "0.10.2",
+                "ok": bool(ffg.get("ok")), "version": VERSION,
+                "ffglitch": ffg.get("version") or ffg.get("error"),
                 "jobs": jobs.stats(), "cache": store.cache_stats(),
                 "ops": len(ops.REGISTRY), "etsch": ETSCH_URL})
 
@@ -631,7 +643,8 @@ def main():
     store.init()
     ops.load_all()
     jobs.start()
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    print("glitzyd listening on %s:%d" % (HOST, PORT), flush=True)
+    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":

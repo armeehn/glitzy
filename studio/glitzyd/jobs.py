@@ -15,12 +15,17 @@ it. One render at a time is what the memory budget in clip.MAX_PIXELS is
 sized against; raising this means lowering that.
 """
 
+import os
 import threading
 import time
 import traceback
 import uuid
 
-MAX_WORKERS = 1
+# Tunable per host alongside GLITZY_MAX_PIXELS and the unit's MemoryMax. These
+# three are one setting in three places: workers x per-render budget must stay
+# under the cgroup cap, or the OOM killer takes the whole engine rather than
+# the one render that overreached.
+MAX_WORKERS = max(1, int(os.environ.get("GLITZY_MAX_WORKERS") or 1))
 KEEP = 200
 
 _jobs = {}
