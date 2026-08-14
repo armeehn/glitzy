@@ -5,8 +5,25 @@ Two halves, two very different places.
 | | Etsch | Glitzy studio |
 |---|---|---|
 | Where | Cloudflare Workers (static assets) | A host you control |
-| Public | Yes — <https://glitzy.ripostelabs.xyz> | No, and deliberately so |
+| Public | **Configured, not published** | No, and deliberately so |
 | Needs | `wrangler` | Python 3.11+, NumPy, Pillow, ffglitch |
+
+**Nothing is published to Cloudflare yet.** `wrangler.toml` is complete and
+`wrangler deploy --dry-run` passes; the deploy has simply not been run.
+
+Worth stating plainly, because "deploy the app" and "expose my infrastructure"
+are easy to conflate and only one of them is happening here: **publishing Etsch
+exposes no server.** It is static assets with no Worker code, and it makes no
+backend calls — the only `fetch()` in the whole bundle is a relative,
+same-origin `/handoff/<id>`. That route exists on the internal deployment and
+does not exist on Cloudflare, where it 404s and the app reports a miss and
+carries on. There is no tunnel, no port-forward, and no reference to any
+private host in `etsch/public` — no LAN address, no internal hostname, no port.
+Grep it before you take that on trust:
+
+```sh
+grep -rnE '10\.0\.|\.hq\.|localhost|8090' etsch/public/   # expect no matches
+```
 
 ---
 
