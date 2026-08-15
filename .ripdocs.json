@@ -1,0 +1,58 @@
+{
+  "_comment": [
+    "ripdoc — this repo's filed documents. DOC NO. RL-BRAND-001-MD.",
+    "`ripdoc scan` owns which documents exist. Everything else here is",
+    "hand-set and survives a rescan: docno, rev, title, kicker,",
+    "strapline, class, class_options. Set \"pinned\": true to keep an",
+    "entry whose source has gone.",
+    "Numbers are registered in riposte-brand/docs/09-document-numbers.md."
+  ],
+  "docno_base": "RL-360",
+  "author": "Riposte Laboratories",
+  "class": "riposte-doc",
+  "exclude": [],
+  "documents": [
+    {
+      "id": "deploy",
+      "source": "DEPLOY.md",
+      "docno": "RL-360-DEPLOY",
+      "rev": "A",
+      "class": "riposte-doc"
+    },
+    {
+      "id": "etsch-readme",
+      "source": "etsch/README.md",
+      "docno": "RL-360-ETSCH",
+      "rev": "A",
+      "class": "riposte-doc"
+    },
+    {
+      "id": "readme",
+      "source": "README.md",
+      "docno": "RL-360",
+      "rev": "A",
+      "class": "riposte-doc"
+    },
+    {
+      "id": "studio-deploy-remote-access",
+      "source": "studio/deploy/REMOTE-ACCESS.md",
+      "docno": "RL-360-REMOTE-ACCESS",
+      "rev": "A",
+      "class": "riposte-doc"
+    },
+    {
+      "id": "studio-readme",
+      "source": "studio/README.md",
+      "docno": "RL-360-STUDIO",
+      "rev": "A",
+      "class": "riposte-doc"
+    },
+    {
+      "id": "third-party",
+      "source": "THIRD-PARTY.md",
+      "docno": "RL-360-THIRD-PARTY",
+      "rev": "A",
+      "class": "riposte-doc"
+    }
+  ]
+}
