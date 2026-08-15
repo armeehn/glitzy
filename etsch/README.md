@@ -9,7 +9,7 @@ the machine they were opened on.
 Starts on **US Letter**. A4, Legal, Tabloid, A3/A5 and 12×12 / 12×24 cutting
 mats are one dropdown away, plus any custom size.
 
-![Cut lines generated around artwork](docs/preview-cutlines.png)
+![Cut lines generated around artwork](../docs/preview-cutlines.png)
 
 ## What it does
 
