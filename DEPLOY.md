@@ -111,8 +111,16 @@ That copies the tree to the engine host and restarts `glitzyd.service`. See
 
 The unit sets `MemoryMax`. This is load-bearing: a single numpy operation on a
 large clip can allocate more than a gigabyte in about two seconds, and the
-engine measures roughly 75 bytes per pixel per operation, not the 4 bytes an
-RGBA frame suggests.
+costliest operation measures **about 104 bytes per pixel** — not the 4 bytes an
+RGBA frame suggests, and not the 75 B/px this document claimed until
+2026-08-15. The binding op is `colour.hsv`, not the warp family; the warps are
+cheaper per pixel but carry a separate ~410 MB cost per *frame* at the
+1600×1600 maximum. Both models, and the measurements behind them, are written
+out in `studio/glitzyd/clip.py`.
+
+Raising the container's memory does **not** raise this ceiling. `MemoryMax` on
+the unit is a second, lower ceiling, and it is the one that kills renders; the
+two have to be raised together, along with `GLITZY_MAX_PIXELS`.
 
 **When `MemoryMax` is hit the whole cgroup is SIGKILLed**, so the engine dies
 rather than returning an error, and a reverse proxy in front of it reports a

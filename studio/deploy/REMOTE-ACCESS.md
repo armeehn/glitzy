@@ -84,7 +84,7 @@ It binds to `127.0.0.1` by default. Put a gate in front before changing that.
 
 | | Minimum | Comfortable | Why |
 |---|---|---|---|
-| RAM | **2 GB** | 4 GB | one render peaks near 900 MB (~75 B/px × 12M px); below a ~1.4 GB ceiling the cgroup SIGKILLs the engine, which surfaces as a **502**, not an error |
+| RAM | **2 GB** | 4 GB | one render peaks near 970 MB (~104 B/px × 9M px, measured on `colour.hsv`, the costliest op); below a ~1.4 GB ceiling the cgroup SIGKILLs the engine, which surfaces as a **502**, not an error |
 | CPU | 1 core | 2–4 | `GLITZY_MAX_WORKERS` is 1 by default; more workers divide the memory budget, they do not add to it |
 | Disk | 10 GB | 20 GB+ | cache budget (default 6 GB) + sources/exports + ffglitch (~110 MB) |
 | Arch | x86-64 or **arm64** | | ffglitch ships both for Linux |
