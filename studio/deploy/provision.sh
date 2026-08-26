@@ -68,13 +68,17 @@ say "arch=$ARCH ram=${MEM_MB}MB disk=${DISK_MB}MB os=$OSID"
   echo "       from the proxy, not as an engine error. 2 GB is the floor." >&2
   exit 1; }
 
-# Sizing. Leave ~600 MB for the OS, cap one render at ~75 B/px with ~400 MB of
-# interpreter headroom, and never exceed what a single render can actually use.
+# Sizing. Leave ~600 MB for the OS, then budget one render against the op that
+# actually costs the most. That is colour.hsv, measured at 103.9 bytes per
+# output pixel plus a ~31 MB fixed cost -- NOT the 75 B/px the warp family was
+# once thought to bound (see the derivation in glitzyd/clip.py). 75 over-admits
+# by ~39%, and the failure mode is an uncatchable SIGKILL that reaches the user
+# as a 502, so round the divisor up rather than down.
 MEM_MAX=$(( MEM_MB - 600 ));       [ "$MEM_MAX" -gt 6000 ] && MEM_MAX=6000
 WORKERS=$(( (MEM_MAX - 400) / 1000 )); [ "$WORKERS" -lt 1 ] && WORKERS=1
 [ "$WORKERS" -gt 4 ] && WORKERS=4
 PER_RENDER_MB=$(( (MEM_MAX - 400) / WORKERS ))
-MAX_PIXELS=$(( PER_RENDER_MB * 1000000 / 75 ))
+MAX_PIXELS=$(( (PER_RENDER_MB - 31) * 1000000 / 104 ))
 CACHE_GB=$(( DISK_MB / 1024 / 3 )); [ "$CACHE_GB" -lt 2 ] && CACHE_GB=2
 [ "$CACHE_GB" -gt 40 ] && CACHE_GB=40
 say "sizing: MemoryMax=${MEM_MAX}M workers=$WORKERS max_pixels=$MAX_PIXELS cache=${CACHE_GB}G"

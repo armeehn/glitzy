@@ -84,6 +84,38 @@ try:
 except (ClipTooBig, MemoryError, ValueError) as e:
     check("oversized clip refused", True)
 
+# The check above is 1.02 BILLION pixels -- ~113x MAX_PIXELS -- so it proves the
+# guard exists, not where it sits: any limit from 9M to 900M passes it equally.
+# It also accepts MemoryError, which makes it host-dependent rather than a real
+# assertion -- np.zeros of 4 GB is a lazy calloc and succeeds on a box with
+# overcommit, so whether that check tests the guard or the allocator depends on
+# where you run it. These three pin the actual boundary, from both sides, on
+# ClipTooBig alone. Verified to FAIL when check_budget's condition is neutered.
+from glitzyd.clip import MAX_PIXELS, check_budget  # noqa: E402
+
+try:
+    check_budget(1, 1, MAX_PIXELS + 1)
+    check("check_budget refuses one pixel over MAX_PIXELS", False)
+except ClipTooBig:
+    check("check_budget refuses one pixel over MAX_PIXELS", True)
+
+try:
+    check_budget(1, 1, MAX_PIXELS)
+    check("check_budget admits exactly MAX_PIXELS", True)
+except ClipTooBig:
+    check("check_budget admits exactly MAX_PIXELS", False)
+
+# And the guard has to be reachable through the op layer, not just callable:
+# every source op calls it up front precisely because a generator fills its
+# float32 fields long before Clip() ever sees them.
+try:
+    ops.REGISTRY["source.solid"]["fn"](
+        None, {"width": 1600, "height": 1600, "fps": 12, "fill": "#ffffff",
+               "frames": MAX_PIXELS // (1600 * 1600) + 2}, None)
+    check("a source op refuses an oversized generate", False)
+except ClipTooBig:
+    check("a source op refuses an oversized generate", True)
+
 d = os.path.join(DATA, "cliptest")
 c.save(d)
 c2 = Clip.load(d)
