@@ -262,3 +262,69 @@ def bayer(size=8):
 
 def tile_to(m, h, w):
     return np.tile(m, (h // m.shape[0] + 1, w // m.shape[1] + 1))[:h, :w]
+
+
+# ---------------------------------------------------------------------------
+# Error diffusion
+# ---------------------------------------------------------------------------
+
+# Kernel taps as (dy, dx, weight). Both kernels only ever push error forward,
+# which is what makes the wavefront in error_diffuse() legal.
+DIFFUSION = {
+    "floyd_steinberg": ((0, 1, 7 / 16), (1, -1, 3 / 16),
+                        (1, 0, 5 / 16), (1, 1, 1 / 16)),
+    "atkinson": ((0, 1, 1 / 8), (0, 2, 1 / 8), (1, -1, 1 / 8),
+                 (1, 0, 1 / 8), (1, 1, 1 / 8), (2, 0, 1 / 8)),
+}
+
+
+def error_diffuse(rgb, snap, method="floyd_steinberg", strength=1.0):
+    """Serial error diffusion, run as a parallel wavefront.
+
+    Error diffusion is defined pixel by pixel in scan order, and an 11M-pixel
+    clip is minutes of Python that way. But every tap of both kernels above
+    lands at a strictly larger value of k = 2y + x, so all the pixels sharing
+    one k are independent of each other. Sweeping k in order therefore gives
+    the exact scan-order answer in ~(2h + w) vector steps instead of h*w
+    scalar ones:
+
+        k = 2y + x        FS taps land at k+1, k+1, k+2, k+3
+                          Atkinson at k+1, k+2, k+2, k+3, k+4
+
+    Within one k and one tap the source pixels are distinct, so the scatter is
+    an ordinary indexed add rather than np.add.at.
+
+    `snap` maps a (px, 3) float array to the quantised colours it should take.
+    Every frame rides the same sweep, so the cost is flat in n.
+    """
+    n, h, w = rgb.shape[:3]
+    buf = np.array(rgb, np.float32).reshape(n, h * w, 3)
+    out = np.empty_like(buf)
+    taps = DIFFUSION[method]
+
+    yy, xx = np.mgrid[0:h, 0:w]
+    k = (2 * yy + xx).ravel()
+    order = np.argsort(k, kind="stable")
+    ks = k[order]
+    bounds = np.searchsorted(ks, np.arange(ks[-1] + 2))
+
+    for i in range(len(bounds) - 1):
+        idx = order[bounds[i]:bounds[i + 1]]
+        if idx.size == 0:
+            continue
+        cur = buf[:, idx, :]
+        q = snap(cur.reshape(-1, 3)).reshape(cur.shape)
+        out[:, idx, :] = q
+        # The buffer is deliberately not clamped: clamping it here throws away
+        # the error that a saturated run owes the pixels after it, and the
+        # highlights come back flat.
+        err = (cur - q) * strength
+        ty, tx = idx // w, idx % w
+        for dy, dx, weight in taps:
+            ny, nx = ty + dy, tx + dx
+            ok = (ny < h) & (nx >= 0) & (nx < w)
+            if not ok.any():
+                continue
+            buf[:, ny[ok] * w + nx[ok], :] += err[:, ok, :] * weight
+
+    return out.reshape(n, h, w, 3)

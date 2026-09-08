@@ -8,6 +8,7 @@ Named colourops.py rather than colour.py on purpose: a submodule called
 import numpy as np
 
 from .. import nputil, palettes
+from . import colour as colour_param
 from . import flag, num, op, pick
 
 
@@ -39,31 +40,44 @@ def palette(clip, p, ctx):
         target = np.where(t < 0.5, cols[0], cols[2 % len(cols)])
         out = rgb * t + target * (1 - t) * 0.85 + rgb * (1 - t) * 0.15
     mix = p["mix"] / 100.0
+    if mix >= 1.0:   # the default: no blend, and three fewer planes held
+        return clip.with_rgb(np.clip(out, 0, 1, out=out))
     return clip.with_rgb(np.clip(rgb * (1 - mix) + out * mix, 0, 1))
 
 
 @op(id="colour.dither", label="Dither", cat="colour",
-    blurb="Ordered dithering down to few colours. Halftone texture that survives a vinyl cut.",
+    blurb="Down to few colours by scattering the error instead of hiding it. Texture that survives a vinyl cut.",
     params=[
         pick("palette", "Palette", palettes.PALETTE_IDS, "mono"),
-        num("matrix", "Matrix", 2, 8, 4, 2, " px"),
+        pick("method", "Method", [
+            {"v": "ordered", "label": "Ordered — Bayer matrix"},
+            {"v": "floyd_steinberg", "label": "Floyd-Steinberg"},
+            {"v": "atkinson", "label": "Atkinson"}], "ordered"),
+        num("matrix", "Matrix", 2, 8, 4, 2, " px", "Ordered only."),
         num("strength", "Strength", 0, 200, 100, 5, "%"),
         flag("mono", "Two tone only", False),
     ])
 def dither(clip, p, ctx):
     rgb = clip.rgb()
-    n, h, w = clip.n, clip.h, clip.w
-    m = nputil.bayer(int(p["matrix"]))
-    thr = nputil.tile_to(m, h, w)[None, ..., None] - 0.5
-    noisy = np.clip(rgb + thr * (p["strength"] / 100.0), 0, 1)
     cols = palettes.colours_of(p["palette"])
-    if p["mono"] or cols is None:
-        l = palettes.luma(noisy)
-        out = np.repeat((l > 0.5).astype(np.float32)[..., None], 3, axis=3)
-        if cols is not None:
-            out = cols[0] + (cols[-1] - cols[0]) * out
-        return clip.with_rgb(out)
-    return clip.with_rgb(palettes.quantise(noisy, cols))
+    two_tone = p["mono"] or cols is None
+
+    def snap(px):
+        """Nearest ink for a (px,3) block -- shared by both methods so the
+        two never disagree about what the palette is."""
+        if not two_tone:
+            return palettes.quantise(px, cols)
+        b = np.repeat((px @ palettes.LUMA > 0.5).astype(np.float32)[:, None], 3, 1)
+        return b if cols is None else cols[0] + (cols[-1] - cols[0]) * b
+
+    if p["method"] != "ordered":
+        out = nputil.error_diffuse(rgb, snap, p["method"], p["strength"] / 100.0)
+        return clip.with_rgb(np.clip(out, 0, 1))
+
+    m = nputil.bayer(int(p["matrix"]))
+    thr = nputil.tile_to(m, clip.h, clip.w)[None, ..., None] - 0.5
+    noisy = np.clip(rgb + thr * (p["strength"] / 100.0), 0, 1)
+    return clip.with_rgb(snap(noisy.reshape(-1, 3)).reshape(rgb.shape))
 
 
 @op(id="colour.hsv", label="Hue & saturation", cat="colour",
@@ -143,3 +157,91 @@ def channels(clip, p, ctx):
     idx = {"r": 0, "g": 1, "b": 2}
     order = [idx[c] for c in p["order"]]
     return clip.with_rgb(clip.rgb()[..., order])
+
+
+def _screen(density, xx, yy, angle, pitch, shape, soft):
+    """Coverage 0..1 of one ink screen.
+
+    `density` is how much ink the pixel wants, (n,h,w). The screen geometry
+    itself is only (h,w): it does not move over the clip, so keeping it two
+    dimensional is the difference between a few megabytes and one per-frame
+    copy of every intermediate.
+    """
+    a = np.deg2rad(angle)
+    ca, sa = np.cos(a), np.sin(a)
+    u = (xx * ca + yy * sa) / pitch
+    v = (-xx * sa + yy * ca) / pitch
+    fu, fv = u - np.floor(u) - 0.5, v - np.floor(v) - 0.5
+
+    d = np.clip(density, 0, 1)
+    if shape == "square":
+        r, radius = np.maximum(np.abs(fu), np.abs(fv)), np.sqrt(d) / 2
+    elif shape == "line":
+        r, radius = np.abs(fv), d / 2
+    elif shape == "euclidean":
+        r, radius = np.abs(fu) + np.abs(fv), np.sqrt(d / 2)
+    else:
+        # A round dot of area d has radius sqrt(d/pi). Past d ~= 0.79 the dots
+        # touch and merge, which is exactly what a real screen does too.
+        r, radius = np.hypot(fu, fv), np.sqrt(d / np.pi)
+    # radius is ours alone, so the threshold is folded into it in place: the
+    # chained form allocated four more full-clip planes and this op is one of
+    # the two that set the engine's pixel ceiling.
+    radius -= r
+    radius /= (0.02 + soft * 0.25)
+    radius += 0.5
+    return np.clip(radius, 0, 1, out=radius)
+
+
+@op(id="colour.halftone", label="Halftone", cat="colour",
+    blurb="A real printer's screen: rotated dot grids whose dots grow with the ink underneath.",
+    params=[
+        pick("screen", "Screen", [
+            {"v": "mono", "label": "One ink"},
+            {"v": "cmyk", "label": "CMYK — four rotated screens"},
+            {"v": "rgb", "label": "RGB — light on black"}], "mono"),
+        num("dots", "Frequency", 8, 160, 40, 2, " across",
+            "Dots across the width. Higher is finer."),
+        num("angle", "Angle", 0, 90, 45, 5, "°"),
+        pick("shape", "Dot", ["round", "square", "line", "euclidean"], "round"),
+        num("softness", "Softness", 0, 100, 25, 5, "%"),
+        colour_param("ink", "Ink", "#1D1A17"),
+        colour_param("paper", "Paper", "#F4EFE6"),
+        num("mix", "Strength", 0, 100, 100, 5, "%"),
+    ], varies=("dots", "angle"))
+def halftone(clip, p, ctx):
+    rgb = clip.rgb()
+    h, w = clip.h, clip.w
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    pitch = max(2.0, w / float(p["dots"]))
+    shape, soft, ang = p["shape"], p["softness"] / 100.0, float(p["angle"])
+
+    if p["screen"] == "mono":
+        ink, paper = palettes.hex_f(p["ink"]), palettes.hex_f(p["paper"])
+        cov = _screen(1.0 - palettes.luma(rgb), xx, yy, ang, pitch, shape, soft)
+        out = paper + (ink - paper) * cov[..., None]
+    elif p["screen"] == "rgb":
+        # Additive: the dots are light, so a channel's own value is its coverage.
+        out = np.empty_like(rgb)
+        for c, off in enumerate((0.0, 30.0, 60.0)):
+            out[..., c] = _screen(rgb[..., c], xx, yy, ang + off, pitch, shape, soft)
+    else:
+        # The classic screen angles. They are 30° apart so the four grids beat
+        # into a rosette instead of a moire; black takes the least visible 45°.
+        k = 1.0 - rgb.max(3)
+        inv = np.clip(1.0 - k, 1e-4, None)
+        kc = _screen(k, xx, yy, ang + 45, pitch, shape, soft)
+        out = np.empty_like(rgb)
+        # One ink at a time. Holding all of C, M and Y as a second full-colour
+        # array cost more than every other step here put together.
+        for c, off in enumerate((15.0, 75.0, 0.0)):
+            ink = 1.0 - rgb[..., c]
+            ink -= k
+            ink /= inv
+            cov = _screen(ink, xx, yy, ang + off, pitch, shape, soft)
+            cov -= 1.0
+            cov *= -(1.0 - kc)
+            out[..., c] = cov
+
+    mix = p["mix"] / 100.0
+    return clip.with_rgb(np.clip(rgb * (1 - mix) + out * mix, 0, 1))
