@@ -93,7 +93,7 @@ setup, the operation reference, and a long list of things that will bite you.
 
 `npx wrangler deploy` publishes `etsch/public` to Cloudflare Workers as static
 assets and attaches `glitzy.ripostelabs.xyz`. **Nothing is published yet** — the
-config is ready and the command has not been run. See [DEPLOY.md](DEPLOY.md).
+config is ready and the command has not been run. See [docs/pdf/deploy.pdf](docs/pdf/deploy.pdf).
 
 There is no Worker code: with `assets` and no `main`, nothing runs per request.
 Etsch makes no backend calls of any kind — the only `fetch()` in it is a
@@ -112,7 +112,7 @@ Glitzy is MIT-licensed — see [LICENSE](LICENSE).
 
 Almost none of the interesting work here is ours. The bitstream corruption is
 ffglitch, the array work is NumPy, the imaging is Pillow, and the studio sets
-its type in JetBrains Mono. **[THIRD-PARTY.md](THIRD-PARTY.md)** lists every
+its type in JetBrains Mono. **[docs/pdf/third-party.pdf](docs/pdf/third-party.pdf)** lists every
 one of them with its licence, and is specific about the two that ask something
 of you:
 
