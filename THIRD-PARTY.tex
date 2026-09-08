@@ -1,0 +1,153 @@
+% DOC NO. RL-360-THIRD-PARTY · REV. A
+%
+% This file IS the document. Edit it directly - ripdoc compiles it
+% as it stands and stamps the provenance line at build time.
+%
+%   ripdoc build --only third-party
+%
+% Promoted from THIRD-PARTY.md on 2026-09-07 by `ripdoc promote`.
+\documentclass[fontpath=fonts/,logopath=logo/]{riposte-doc}
+\usepackage{riposte-md}
+
+\title{Third-party software and attribution}
+\author{Riposte Laboratories}
+\date{}
+\ripdocno{RL-360-THIRD-PARTY}
+\riprev{A}
+\ripstrapline{Glitzy is MIT-licensed (see LICENSE), but almost none of the interesting work in it is ours. This file records what Glitzy stands on, what each piece is licensed under, and — where a licence asks something of us — what we actually do about it.}
+\riprunningtitle{Third-party software and attribution}
+
+\begin{document}
+
+\ripmakehead
+
+Versions below are the ones the project is developed and tested against. They are recorded so a claim here can be checked, not because other versions are forbidden.
+
+\ripmono{LICENSE} is kept as the bare, unmodified MIT text on purpose — GitHub, \ripmono{licensee} and most SBOM tooling match it by content, and appending even a sentence to it makes the repository's licence detect as "Other". Everything that would have gone in that appendix is here instead: the MIT licence covers this repository's own code and nothing else. The third-party software below carries its own terms, and one of them is copyleft.
+
+
+\ripsection{\ripmdhead{The studio (\NoCaseChange{\ripmono{studio/}})}}
+
+
+\ripsubsection{\ripmdhead{ffglitch — ffedit and ffgac}}
+
+\textbf{This is the reason the studio exists.} Every \ripmono{codec.*} operation — smear, tail, sink, storm, freeze, blockquant, bleed — is an ffedit script that rewrites motion vectors and quantisation coefficients \riphi{inside} an MPEG-2 bitstream. That is not an effect anyone can reimplement in numpy; it is datamoshing done properly, on the compressed representation, and ffglitch is what makes it addressable at all.
+
+\begin{ripmdgrid}{X[0.55,l]X[1.65,l]}
+Project & \href{https://ffglitch.org/}{ffglitch} by Ramiro Polla \\
+Version used & \ripmono{ffglitch-\allowbreak{}0.\allowbreak{}10.\allowbreak{}2} \\
+Upstream & FFmpeg, © 2000–2024 the FFmpeg developers; FFglitch © 2017–2024 Ramiro Polla \\
+Licence & \textbf{GPL-2.0-or-later} — the binaries are configured \ripmono{--enable-gpl} \\
+How Glitzy uses it & Executed as a \textbf{separate process} (\ripmono{subprocess}), never linked \\
+Distributed here? & \textbf{No.} Not vendored, not bundled, not redistributed \\
+\end{ripmdgrid}
+
+\textbf{On the copyleft.} ffglitch is GPL and Glitzy is MIT, so this is worth being precise about rather than hand-waving.
+
+\begin{ripbullets}
+\item Glitzy invokes \ripmono{ffgac} and \ripmono{ffedit} as separate programs over a pipe and the filesystem. It does not link against libav*, does not include ffglitch source, and does not ship its binaries. Running a GPL program is expressly not a trigger for the GPL's distribution terms — GPLv2 §0, "the act of running the Program is not restricted".
+\item \ripmono{studio/\allowbreak{}rack/\allowbreak{}*.\allowbreak{}js} are our scripts, executed \riphi{by} ffedit's embedded QuickJS interpreter. Being input to an interpreter does not make a work a derivative of it, the same way a shell script is not a derivative of bash.
+\item \textbf{If you build a distribution that includes ffglitch binaries} — a Docker image, an appliance, an installer — then \riphi{that} distribution conveys GPL software and the GPL's obligations attach to it (offer of source, etc.). Glitzy's own MIT licence does not change that, and nothing in this repository does it for you. The studio expects ffglitch to be installed from upstream on the machine that runs it, deliberately — see \ripdocref{studio/README.md}{RL-360-STUDIO}.
+\end{ripbullets}
+
+QuickJS, the interpreter ffedit embeds, is by Fabrice Bellard and Charlie Gordon and is MIT-licensed. It arrives as part of ffglitch; we neither ship it nor call it directly.
+
+
+\ripsubsection{\ripmdhead{NumPy}}
+
+\begin{ripmdgrid}{X[0.55,l]X[1.56,l]}
+Project & \href{https://numpy.org/}{NumPy} \\
+Version & 2.2.4 \\
+Licence & BSD-3-Clause, © 2005–2024 NumPy Developers \\
+\end{ripmdgrid}
+
+Every non-codec operation is numpy. The seven generators, the whole pixel, colour, geometry, matte and time families, the compositor and the bilinear sampler are all array work. The \ripmono{Clip} abstraction that lets one operation serve both stills and video is a numpy array with a frame axis and nothing more.
+
+
+\ripsubsection{\ripmdhead{Pillow}}
+
+\begin{ripmdgrid}{X[0.55,l]X[1.79,l]}
+Project & \href{https://python-pillow.org/}{Pillow}, the friendly PIL fork \\
+Version & 11.1.0 \\
+Licence & MIT-CMU (the permissive historic PIL licence) — \href{https://github.com/python-pillow/Pillow/blob/main/LICENSE}{full text} \\
+\end{ripmdgrid}
+
+Image decoding and encoding, and the GIF and APNG writers.
+
+
+\ripsubsection{\ripmdhead{JetBrains Mono}}
+
+\begin{ripmdgrid}{X[0.55,l]X[1.75,l]}
+Project & \href{https://github.com/JetBrains/JetBrainsMono}{JetBrains Mono} \\
+Version & 2.211 (variable, \ripmono{wght} 100–800), Latin subset \\
+Licence & \textbf{SIL Open Font License 1.1}, © 2020 The JetBrains Mono Project Authors \\
+Bundled here? & \textbf{Yes} — \ripmono{studio/\allowbreak{}web/\allowbreak{}fonts/\allowbreak{}jetbrains-\allowbreak{}mono-\allowbreak{}latin.\allowbreak{}woff2} \\
+\end{ripmdgrid}
+
+This is the one dependency Glitzy actually redistributes, so it is the one with live obligations. OFL 1.1 §1 requires the copyright notice and the licence to travel with the font in any redistribution, source or binary.
+
+\textbf{The full licence therefore ships next to the font, at \ripmdpath{\ripmono{studio/\allowbreak{}web/\allowbreak{}fonts/\allowbreak{}JetBrainsMono-\allowbreak{}OFL.\allowbreak{}txt}}.} If the font file is ever moved, copied into a build output, or vendored into another tree, that text has to go with it. It was missing until 2026-08-14; the font had been redistributed without it.
+
+The Reserved Font Name clause matters too: the file must not be renamed to something containing "JetBrains Mono" if it is ever modified or subset further. The bundled file is an unmodified upstream Latin subset.
+
+
+\ripsubsection{\ripmdhead{Python standard library}}
+
+\ripmono{http.server} is the whole web server. Licensed under the PSF License Agreement. There is no framework here and that is on purpose.
+
+
+\ripsection{\ripmdhead{The cutting tool (\NoCaseChange{\ripmono{etsch/}})}}
+
+Etsch has \textbf{no runtime dependencies at all}. It is plain ES modules, HTML and CSS, with no build step and nothing vendored — the deployed \ripmono{Content-\allowbreak{}Security-\allowbreak{}Policy} is \ripmono{default-\allowbreak{}src 'self'}, which is enforceable precisely because there is no third-party script to allow. Nothing an Etsch user opens leaves their machine.
+
+Its development dependencies are not shipped to anyone:
+
+\begin{ripmdtable}{X[1.54,l]X[0.55,l]X[0.55,l]X[1.91,l]}
+\ripmdth{PACKAGE} & \ripmdth{VERSION} & \ripmdth{LICENCE} & \ripmdth{USED FOR} \\
+\href{https://github.com/Brooooooklyn/canvas}{@napi-rs/canvas} & 1.0.3 & MIT & A real canvas in tests, so contour tracing and the PNG/PDF writers are exercised for real rather than mocked \\
+\href{https://github.com/jsdom/jsdom}{jsdom} & 30.0.1 & MIT & DOM tests without a browser \\
+\href{https://github.com/cloudflare/workers-sdk}{wrangler} & 4.86.0 & MIT OR Apache-2.0 & Deploying to Cloudflare \\
+\href{https://github.com/lovell/sharp}{sharp} & 0.34.5 & Apache-2.0 & Pulled in transitively by the toolchain \\
+\end{ripmdtable}
+
+\ripmono{npm ci} fetches many more packages transitively; run \ripmono{npm ls --all} for the resolved tree, and \ripmono{npm sbom -\allowbreak{}-\allowbreak{}sbom-\allowbreak{}format=\allowbreak{}cyclonedx} for a machine-readable inventory with licences.
+
+
+\ripsubsection{\ripmdhead{Formats and conventions Etsch implements}}
+
+These are not dependencies — nothing is copied from them — but they are other people's specifications, and naming them is the honest thing to do.
+
+\begin{ripbullets}
+\item \textbf{\ripmono{CutContour}} is the de-facto spot-colour and layer name that cutting software looks for when deciding which paths are cut rather than printed. It originates with Roland's VersaWorks and is understood by Illustrator, Esko and the rest of the print-and-cut world. \textbf{This is why it is the one string in the codebase the rename was not allowed to touch} — a file with a differently-named layer is a file no machine will cut.
+\item \textbf{DXF} is Autodesk's drawing interchange format. Etsch writes the documented minimal \ripmono{ENTITIES} subset (\ripmono{LWPOLYLINE}) by hand.
+\item \textbf{PDF} output is written directly against the PDF specification (ISO 32000), including \ripmono{TrimBox} and vector cut paths.
+\end{ripbullets}
+
+
+\ripsubsection{\ripmdhead{Trademarks}}
+
+Etsch ships machine profiles named \textbf{Cricut}, \textbf{Silhouette} and \textbf{Roland}, and writes registration marks those machines' software expects to find.
+
+Those names are the trademarks of their respective owners. They appear here only to say which machine a profile is for — nominative use. \textbf{Glitzy and Etsch are not affiliated with, endorsed by, or sponsored by Cricut, Silhouette America, or Roland DG.} Nothing here is derived from their software, and the mark geometry is implemented from published dimensions and measurement.
+
+
+\ripsection{\ripmdhead{Checking this file}}
+
+It is meant to be verifiable, not decorative:
+
+\ripcodeopen
+\ripcodehead{sh}
+\ripcodesize{9.0}{13.95}
+\begin{ripcodeblock}
+npm ls --all                         # the resolved Node tree
+npm sbom --sbom-format=cyclonedx     # machine-readable, with licences
+ffedit -version                      # confirms the ffglitch build and its GPL flags
+python3 -c "import numpy, PIL; print(numpy.__version__, PIL.__version__)"
+\end{ripcodeblock}
+\ripcodesizereset\ripcodeclose
+
+If you add a dependency, vendor a file, or bundle an asset, add it here in the same commit. A dependency list that is updated later is a dependency list that is wrong now.
+
+\ripend
+
+\end{document}
