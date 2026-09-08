@@ -1,0 +1,162 @@
+% DOC NO. RL-360-DEPLOY · REV. A
+%
+% This file IS the document. Edit it directly - ripdoc compiles it
+% as it stands and stamps the provenance line at build time.
+%
+%   ripdoc build --only deploy
+%
+% Promoted from DEPLOY.md on 2026-09-07 by `ripdoc promote`.
+\documentclass[fontpath=fonts/,logopath=logo/]{riposte-doc}
+\usepackage{riposte-md}
+
+\title{Deploying}
+\author{Riposte Laboratories}
+\date{}
+\ripdocno{RL-360-DEPLOY}
+\riprev{A}
+\ripstrapline{Two halves, two very different places.}
+\riprunningtitle{Deploying}
+
+\begin{document}
+
+\ripmakehead
+
+\begin{ripmdtable}{X[0.55,l]X[1.23,l]X[1.43,l]}
+\ripmdth{{}} & \ripmdth{ETSCH} & \ripmdth{GLITZY STUDIO} \\
+Where & Cloudflare Workers (static assets) & A host you control \\
+Public & \textbf{Configured, not published} & No, and deliberately so \\
+Needs & \ripmono{wrangler} & Python 3.11+, NumPy, Pillow, ffglitch \\
+\end{ripmdtable}
+
+\textbf{Nothing is published to Cloudflare yet.} \ripmono{wrangler.toml} is complete and \ripmono{wrangler deploy -\allowbreak{}-\allowbreak{}dry-\allowbreak{}run} passes; the deploy has simply not been run.
+
+Worth stating plainly, because "deploy the app" and "expose my infrastructure" are easy to conflate and only one of them is happening here: \textbf{publishing Etsch exposes no server.} It is static assets with no Worker code, and it makes no backend calls — the only \ripmono{fetch()} in the whole bundle is a relative, same-origin \ripmono{/handoff/<id>}. That route exists on the internal deployment and does not exist on Cloudflare, where it 404s and the app reports a miss and carries on. There is no tunnel, no port-forward, and no reference to any private host in \ripmono{etsch/public} — no LAN address, no internal hostname, no port. Grep it before you take that on trust:
+
+\ripcodeopen
+\ripcodehead{sh}
+\ripcodesize{9.0}{13.95}
+\begin{ripcodeblock}
+grep -rnE '10\.0\.|\.hq\.|localhost|8090' etsch/public/   # expect no matches
+\end{ripcodeblock}
+\ripcodesizereset\ripcodeclose
+
+
+\ripsection{\ripmdhead{Etsch → Cloudflare}}
+
+\ripmono{wrangler.toml} declares a Worker named \ripmono{glitzy} with an \ripmono{assets} directory and \textbf{no \ripmono{main}}. That combination means Cloudflare serves \ripmono{etsch/public} directly: no script runs on a request, so there is nothing billed per request and no runtime to keep patched.
+
+\ripcodeopen
+\ripcodehead{sh}
+\ripcodesize{9.0}{13.95}
+\begin{ripcodeblock}
+npm ci
+npx wrangler deploy --dry-run    # validates the config, no credentials needed
+npx wrangler deploy
+\end{ripcodeblock}
+\ripcodesizereset\ripcodeclose
+
+
+\ripsubsection{\ripmdhead{Credentials}}
+
+Either works:
+
+\begin{ripbullets}
+\item \textbf{\ripmono{npx wrangler login}} — OAuth in a browser, nothing long-lived stored.
+\item \textbf{\ripmono{CLOUDFLARE\_\allowbreak{}API\_\allowbreak{}TOKEN}} — for a headless box. The token needs \textbf{Account → Workers Scripts → Edit}, \textbf{Account → Account Settings → Read} (wrangler discovers the account id with it), and \textbf{Zone → DNS → Edit} on the zone, so it can write the custom domain's record.
+\end{ripbullets}
+
+A token scoped only to \ripmono{Zone → DNS → Edit} — the kind an ACME client uses for DNS-01 — \textbf{is not enough and fails in a confusing way}: it authenticates fine, \ripmono{user/\allowbreak{}tokens/\allowbreak{}verify} says \ripmono{active}, and then \ripmono{accounts} comes back as an empty list rather than an error, so the failure surfaces as "could not determine account" rather than "insufficient permissions".
+
+
+\ripsubsection{\ripmdhead{The custom domain}}
+
+\ripmono{[[routes]] custom\_\allowbreak{}domain =\allowbreak{} true} in \ripmono{wrangler.toml} attaches \ripmono{glitzy.\allowbreak{}ripostelabs.\allowbreak{}xyz} on deploy, and Cloudflare writes the DNS record itself — the zone is on the same account. Keeping the hostname in the config rather than in the dashboard means a fresh account can be rebuilt from this file alone.
+
+The record it writes is a proxied \ripmono{AAAA} to \ripmono{100::}, which is the documented placeholder for a Workers custom domain. It looks wrong in the DNS list and is not.
+
+
+\ripsubsection{\ripmdhead{Checking it}}
+
+\ripcodeopen
+\ripcodehead{sh}
+\ripcodesize{9.0}{13.95}
+\begin{ripcodeblock}
+curl -sI https://glitzy.ripostelabs.xyz/ | head -3
+curl -s  https://glitzy.ripostelabs.xyz/ | grep -o '<title>[^<]*'
+\end{ripcodeblock}
+\ripcodesizereset\ripcodeclose
+
+A 200 with the right title is the whole check. There is no server to be unhealthy.
+
+
+\ripsection{\ripmdhead{Running the studio somewhere else}}
+
+\ripmono{studio/\allowbreak{}deploy/\allowbreak{}provision.\allowbreak{}sh <user@\allowbreak{}host>} provisions the studio onto a fresh Ubuntu 22.04+ / Debian 13 host, \textbf{x86-64 or arm64}, sizing the unit from that host's own RAM and disk. It binds to \ripmono{127.0.0.1} unless told otherwise, because the engine has no authentication of its own.
+
+Requirements, and the remote-access options including the Tailscale route that needs no new machine at all, are in \textbf{\ripdocref{studio/deploy/REMOTE-ACCESS.md}{RL-360-REMOTE-ACCESS}}. The short version: \textbf{2 GB RAM is the floor} — one render peaks near 900 MB, and below a \textasciitilde{}1.4 GB ceiling the cgroup kills the engine, which looks like a 502.
+
+
+\ripsection{\ripmdhead{The studio → a host you control}}
+
+The studio is \textbf{not} on the public internet and should not be. It accepts file uploads, spawns \ripmono{ffgac}/\ripmono{ffedit} subprocesses on them, and holds a cache keyed on user input. It belongs behind an authenticating reverse proxy on a network you trust. \ripmono{studio/\allowbreak{}deploy/\allowbreak{}} holds the site file for that proxy.
+
+\ripcodeopen
+\ripcodehead{sh}
+\ripcodesize{9.0}{13.95}
+\begin{ripcodeblock}
+studio/deploy.sh --restart
+\end{ripcodeblock}
+\ripcodesizereset\ripcodeclose
+
+That copies the tree to the engine host and restarts \ripmono{glitzyd.\allowbreak{}service}. See \ripdocref{studio/README.md}{RL-360-STUDIO} for what the engine needs installed.
+
+
+\ripsubsection{\ripmdhead{Memory is the operational constraint}}
+
+The unit sets \ripmono{MemoryMax}. This is load-bearing: a single numpy operation on a large clip can allocate more than a gigabyte in about two seconds, and the costliest operation measures \textbf{about 104 bytes per pixel} — not the 4 bytes an RGBA frame suggests, and not the 75 B/px this document claimed until 2026-08-15. The binding op is \ripmono{colour.hsv}, not the warp family; the warps are cheaper per pixel but carry a separate \textasciitilde{}410 MB cost per \riphi{frame} at the 1600×1600 maximum. Both models, and the measurements behind them, are written out in \ripmono{studio/\allowbreak{}glitzyd/\allowbreak{}clip.\allowbreak{}py}.
+
+Raising the container's memory does \textbf{not} raise this ceiling. \ripmono{MemoryMax} on the unit is a second, lower ceiling, and it is the one that kills renders; the two have to be raised together, along with \ripmono{GLITZY\_\allowbreak{}MAX\_\allowbreak{}PIXELS}.
+
+\textbf{When \ripmono{MemoryMax} is hit the whole cgroup is SIGKILLed}, so the engine dies rather than returning an error, and a reverse proxy in front of it reports a \textbf{502}. A 502 from the studio means the engine was killed, not that it hung. \ripmono{journalctl -\allowbreak{}u glitzyd} shows the \ripmono{oom-kill} line and the peak.
+
+Because SIGKILL is not catchable, anything that would exceed the cap has to be refused \riphi{before} it allocates. That is what \ripmono{clip.\allowbreak{}check\_\allowbreak{}budget()} and \ripmono{MAX\_PIXELS} are for; they are not decoration, and raising them without measuring bytes-per-pixel per operation first will just move the crash.
+
+
+\ripsubsection{\ripmdhead{Renaming an existing deployment}}
+
+If you are moving a deployment that predates the Glitchsheet → Glitzy rename, \textbf{move the data directory, do not just point at a new one}:
+
+\ripcodeopen
+\ripcodehead{sh}
+\ripcodesize{9.0}{13.95}
+\begin{ripcodeblock}
+systemctl stop glitchd2
+mv /var/lib/glitchsheet2 /var/lib/glitzy
+mv /opt/glitchsheet2     /opt/glitzy
+\end{ripcodeblock}
+\ripcodesizereset\ripcodeclose
+
+The store is content-addressed and its export links are meant to be permanent — that is the whole reason it keys files on \ripmono{sha1(bytes)} and evicts nothing. Starting the renamed service against an empty \ripmono{/\allowbreak{}var/\allowbreak{}lib/\allowbreak{}glitzy} does not error; it comes up clean and every previously-shared link 404s with "that export has expired". The service name changes from \ripmono{glitchd2} to \ripmono{glitzyd}; the \riphi{v1} engine's unit is still \ripmono{glitchd} and should be left alone, since it is the rollback.
+
+Check the move worked by the cache, not by the service starting:
+
+\ripcodeopen
+\ripcodehead{sh}
+\ripcodesize{9.0}{13.95}
+\begin{ripcodeblock}
+curl -s localhost:8090/api/health   # cache.entries must be what it was, not 0
+\end{ripcodeblock}
+\ripcodesizereset\ripcodeclose
+
+
+\ripsubsection{\ripmdhead{Keeping the old hostnames answering}}
+
+\ripmono{studio/\allowbreak{}deploy/\allowbreak{}160-\allowbreak{}glitzy.\allowbreak{}caddy} and \ripmono{165-\allowbreak{}etsch.\allowbreak{}caddy} each match \textbf{two} hostnames — the new name and the pre-rename one — so nothing anybody has bookmarked breaks.
+
+They are aliases, not redirects, and that is deliberate: the studio sends the browser to Etsch with the sheet id in a \textbf{URL fragment} (\ripmono{\#handoff=<id>}), and fragments are never sent to the server. A 301 from the old name to the new one would arrive with no fragment to put back, so the handoff would land on an empty sheet with no error anywhere.
+
+Both names must also be listed in Authelia's access-control rule. Authelia matches the \riphi{first} rule whose domain matches; an alias that is not listed does not inherit the rule, it falls through to the default policy.
+
+\ripend
+
+\end{document}

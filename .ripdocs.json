@@ -14,7 +14,7 @@
   "documents": [
     {
       "id": "deploy",
-      "source": "DEPLOY.md",
+      "source": "DEPLOY.tex",
       "docno": "RL-360-DEPLOY",
       "rev": "A",
       "class": "riposte-doc"
@@ -35,7 +35,7 @@
     },
     {
       "id": "studio-deploy-remote-access",
-      "source": "studio/deploy/REMOTE-ACCESS.md",
+      "source": "studio/deploy/REMOTE-ACCESS.tex",
       "docno": "RL-360-REMOTE-ACCESS",
       "rev": "A",
       "class": "riposte-doc"
@@ -49,7 +49,7 @@
     },
     {
       "id": "third-party",
-      "source": "THIRD-PARTY.md",
+      "source": "THIRD-PARTY.tex",
       "docno": "RL-360-THIRD-PARTY",
       "rev": "A",
       "class": "riposte-doc"
