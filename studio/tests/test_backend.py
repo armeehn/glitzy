@@ -25,7 +25,7 @@ os.environ.setdefault("GLITZY_RACK", os.path.join(os.path.dirname(HERE), "rack")
 
 import numpy as np  # noqa: E402
 
-from glitzyd import exporters, ff, graph, layers, nputil, ops, store  # noqa: E402
+from glitzyd import exporters, ff, glyphs, graph, layers, nputil, ops, palettes, store  # noqa: E402
 from glitzyd.clip import Clip, ClipTooBig  # noqa: E402
 from glitzyd.graph import ChainError  # noqa: E402
 
@@ -149,6 +149,42 @@ n1 = nputil.fbm(rng, 4, 32, 32, freq=4, octaves=2)
 n2 = nputil.fbm(np.random.default_rng(1), 4, 32, 32, freq=4, octaves=2)
 check("noise is reproducible from a seed", np.allclose(n1, n2))
 check("noise stays in range", 0 <= n1.min() and n1.max() <= 1)
+
+# Error diffusion is defined pixel by pixel in scan order; the engine runs it
+# as a diagonal wavefront so it can vectorise. That trade is only worth
+# anything if the two agree exactly, so the slow definition lives here as the
+# thing the fast one is measured against.
+def _scan_order(img, cols, method, strength=1.0):
+    h, w = img.shape[:2]
+    buf = img.astype(np.float32).copy()
+    out = np.zeros_like(buf)
+    for y in range(h):
+        for x in range(w):
+            v = buf[y, x].copy()
+            q = cols[np.argmin(((cols - v) ** 2).sum(1))]
+            out[y, x] = q
+            e = (v - q) * strength
+            for dy, dx, wt in nputil.DIFFUSION[method]:
+                ny, nx = y + dy, x + dx
+                if 0 <= ny < h and 0 <= nx < w:
+                    buf[ny, nx] += e * wt
+    return out
+
+
+_cols = palettes.colours_of("neon")
+_img = np.random.default_rng(11).random((23, 29, 3)).astype(np.float32)
+for _m in ("floyd_steinberg", "atkinson"):
+    _got = nputil.error_diffuse(
+        _img[None], lambda px: palettes.quantise(px, _cols), _m, 0.8)[0]
+    check("%s wavefront matches scan order exactly" % _m,
+          np.array_equal(_got, _scan_order(_img, _cols, _m, 0.8)))
+
+check("every ramp's atlas is glyph shaped",
+      all(glyphs.atlas(r, 2).shape[1:] == (glyphs.GH * 2, glyphs.GW * 2)
+          for r in glyphs.RAMP_IDS))
+check("a ramp runs light to dark",
+      all(glyphs.atlas(r)[0].sum() < glyphs.atlas(r)[-1].sum()
+          for r in glyphs.RAMP_IDS))
 
 
 # ---------------------------------------------------------------------------
@@ -348,8 +384,13 @@ SAMPLES = [
     ("pixel.scanlines", {"depth": 60}),
     ("pixel.levels", {"contrast": 60}),
     ("pixel.blur", {"radius": 3}),
+    ("pixel.ascii", {"scale": 2}),
+    ("pixel.mosaic", {"cell": 9, "shape": "stud", "bevel": 50}),
+    ("pixel.crt", {"curve": 40, "bloom": 30}),
     ("colour.palette", {"palette": "neon"}),
     ("colour.dither", {"palette": "mono"}),
+    ("colour.dither", {"palette": "mono", "method": "floyd_steinberg"}),
+    ("colour.halftone", {"screen": "cmyk", "dots": 24}),
     ("colour.hsv", {"hue": 90}),
     ("colour.posterize", {"steps": 3}),
     ("colour.invert", {}),
@@ -404,6 +445,62 @@ trimmed = graph.evaluate([CHAIN[0],
                           {"op": "matte.trim", "params": {"pad": 0}}])
 tc = Clip.load(store.cache_path(trimmed["hash"]))
 check("trim crops away the empty margin", tc.w < 128 and tc.h < 128, (tc.w, tc.h))
+
+
+# ---------------------------------------------------------------------------
+section("tiles, screens and the tube")
+# ---------------------------------------------------------------------------
+def _run(chain):
+    return Clip.load(store.cache_path(graph.evaluate(chain)["hash"]))
+
+
+# 112 is a whole number of neither a 9px tile nor a 15px character cell, which
+# is the case where a tiling op used to hand back a cropped canvas and quietly
+# knock every layer above it out of register.
+ODD = {"op": "source.flow", "params": dict(SMALL, width=112, height=112, frames=4)}
+odd_base = _run([ODD])
+for op_id, params in (("pixel.ascii", {"scale": 3}),
+                      ("pixel.mosaic", {"cell": 9}),
+                      ("pixel.crt", {"curve": 30})):
+    out = _run([ODD, {"op": op_id, "params": params}])
+    check("%s leaves the canvas the size it found it" % op_id,
+          (out.n, out.h, out.w) == (odd_base.n, odd_base.h, odd_base.w),
+          (out.n, out.h, out.w))
+
+curved = _run([ODD, {"op": "pixel.crt", "params": {"curve": 90, "vignette": 0}}])
+check("the tube's curve cuts the corners away", curved.frames[0, 0, 0, 3] < 128,
+      curved.frames[0, 0, 0, 3])
+
+flat = _run([ODD, {"op": "pixel.crt",
+                   "params": {"curve": 0, "mask": "none", "scan": 0, "bloom": 0,
+                              "vignette": 0, "misconverge": 0}}])
+check("a flat tube with every effect off does not move the picture",
+      np.abs(flat.frames.astype(int) - odd_base.frames.astype(int)).max() <= 1,
+      np.abs(flat.frames.astype(int) - odd_base.frames.astype(int)).max())
+
+# A stray blended colour here means the error was diffused after the snap
+# instead of before it, which looks fine on screen and cuts as mud.
+fs = _run([ODD, {"op": "colour.dither",
+                 "params": {"palette": "neon", "method": "floyd_steinberg"}}])
+inks = set(map(tuple, np.clip(palettes.colours_of("neon") * 255 + 0.5, 0, 255)
+                .astype(np.uint8)))
+printed = set(map(tuple, fs.frames[..., :3].reshape(-1, 3)))
+check("error diffusion only ever prints palette inks", printed <= inks,
+      sorted(printed - inks)[:4])
+
+ordered = _run([ODD, {"op": "colour.dither",
+                      "params": {"palette": "neon", "method": "ordered"}}])
+check("the two dither methods disagree about the picture",
+      not np.array_equal(fs.frames, ordered.frames))
+
+cut = _run([ODD, {"op": "pixel.mosaic",
+                  "params": {"cell": 8, "shape": "dot", "gaps": "transparent"}}])
+check("cut-away tile gaps leave holes to see through",
+      (cut.frames[..., 3] < 128).any())
+
+blob = _run([{"op": "source.blobs", "params": dict(SMALL, scale=8, drift=6)}])
+check("blobs generate and move over the clip",
+      blob.n == SMALL["frames"] and not np.array_equal(blob.frames[0], blob.frames[-1]))
 
 
 # ---------------------------------------------------------------------------

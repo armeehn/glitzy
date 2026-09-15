@@ -168,6 +168,39 @@ def gen_feedback(rng, n, h, w, p):
     return out
 
 
+def gen_blobs(rng, n, h, w, p):
+    """Metaballs bouncing inside the frame.
+
+    Each blob contributes r^2 / d^2 to a shared field and the surface is
+    wherever that field crosses 1, so two blobs do not overlap -- they bulge
+    toward each other and merge. That merge is the whole reason to draw blobs
+    this way rather than stamping circles, and it is what gives the outline
+    the soft waist a die-cut sticker wants.
+    """
+    k = int(np.clip(p["scale"], 2, 40))
+    pos = rng.random((k, 2)).astype(np.float32) * [w, h]
+    vel = (rng.random((k, 2)).astype(np.float32) - 0.5) * (p["drift"] * 2 + 0.5)
+    rad = (0.05 + rng.random(k).astype(np.float32) * 0.12) \
+        * (p["warp"] / 40.0 + 0.4) * min(h, w)
+    xs, ys = nputil.grid(1, h, w)
+    xs, ys = xs[0], ys[0]
+
+    out = np.empty((n, h, w), np.float32)
+    for i in range(n):
+        field = np.zeros((h, w), np.float32)
+        for j in range(k):
+            # +1 keeps the singularity at the blob's own centre finite
+            field += rad[j] ** 2 / ((xs - pos[j, 0]) ** 2 + (ys - pos[j, 1]) ** 2 + 1.0)
+        out[i] = field
+        pos += vel
+        for axis, limit in ((0, w), (1, h)):
+            vel[(pos[:, axis] < 0) | (pos[:, axis] > limit), axis] *= -1
+            pos[:, axis] = np.clip(pos[:, axis], 0, limit)
+    # Halve it so the surface (field == 1) lands mid-ramp, where the colourway
+    # has the most contrast to spend on the edge.
+    return np.clip(out * 0.5, 0, 1)
+
+
 GENERATORS = [
     ("flow", "Flow field", gen_flow,
      "Marbled currents from warped fractal noise. The soft one."),
@@ -183,6 +216,8 @@ GENERATORS = [
      "A mosaic of drifting cells. Shattered plate glass."),
     ("feedback", "Feedback zoom", gen_feedback,
      "Each frame is the last one zoomed and turned. Tunnels and spirals."),
+    ("blobs", "Blobs", gen_blobs,
+     "Metaballs drifting and merging. Soft organic outlines to cut around."),
 ]
 
 

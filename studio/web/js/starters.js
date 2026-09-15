@@ -93,6 +93,34 @@ export const STARTERS = [
       ['matte.border', { width: 10 }],
     ],
   },
+  {
+    id: 'terminal-tag', name: 'Terminal tag', blurb: 'Blobs redrawn as characters, cut around the glyphs.',
+    chain: [
+      ['source.blobs', { ...SRC, seed: 77, palette: 'acid', scale: 7, warp: 55, drift: 5 }],
+      ['pixel.ascii', { scale: 3, ramp: 'classic', ink: '#B6FF3C', paper: '#101010' }],
+      ['matte.shape', { shape: 'squircle' }],
+      ['matte.border', { width: 10 }],
+    ],
+  },
+  {
+    id: 'press-check', name: 'Press check', blurb: 'Four rotated screens, the rosette a real press leaves.',
+    chain: [
+      ['source.plasma', { ...SRC, seed: 12, palette: 'riposte', scale: 30 }],
+      ['colour.halftone', { screen: 'cmyk', dots: 44, shape: 'euclidean' }],
+      ['matte.shape', { shape: 'circle' }],
+      ['matte.border', { width: 12 }],
+    ],
+  },
+  {
+    id: 'brick-badge', name: 'Brick badge', blurb: 'Moulded studs on a dead channel.',
+    chain: [
+      ['source.blobs', { ...SRC, seed: 303, palette: 'neon', scale: 5, warp: 70, drift: 3 }],
+      ['pixel.crt', { curve: 35, mask: 'aperture', bloom: 40, scan: 50 }],
+      ['pixel.mosaic', { cell: 14, shape: 'stud', bevel: 70, gap: 6, palette: 'neon' }],
+      ['matte.shape', { shape: 'circle' }],
+      ['matte.border', { width: 11 }],
+    ],
+  },
 ];
 
 /** Expand a starter into chain nodes, filling in each op's own defaults. */
